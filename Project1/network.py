@@ -460,6 +460,7 @@ class DeepNetwork:
                 # Print training progress
                 if verbose:
                     print(f'Epoch {e}/{max_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
+                self.set_layer_training_mode(is_training=True)
             
             # Print epoch time
             end_time = time.time()
