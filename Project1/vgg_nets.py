@@ -1,11 +1,11 @@
 '''vgg_nets.py
 The family of VGG neural networks implemented using the CS444 deep learning library
-YOUR NAMES HERE
+Saad Khan and Nithun Selva
 CS444: Deep Learning
 '''
 import network
 from layers import Conv2D, MaxPool2D, Flatten, Dropout, Dense
-from block import VGGConvBlock, VGGDenseBlock
+#from block import VGGConvBlock, VGGDenseBlock
 
 
 class VGG4(network.DeepNetwork):
@@ -56,6 +56,27 @@ class VGG4(network.DeepNetwork):
         - Use helpful names for your layers and variables. You will have to live with them!
         '''
         super().__init__(input_feats_shape=input_feats_shape, reg=reg)
+        
+        # Convolutional layers
+        self.conv1 = Conv2D(name="Conv2D_1", units=filters, kernel_size=(3, 3), prev_layer_or_block=None, activation='relu', wt_scale=wt_scale, wt_init=wt_init)
+        self.conv2 = Conv2D(name="Conv2D_2", units=filters, kernel_size=(3, 3), prev_layer_or_block=self.conv1, activation='relu', wt_scale=wt_scale, wt_init=wt_init)
+        
+        # Max pooling layer
+        self.pool1 = MaxPool2D(name="MaxPool_1", pool_size=(2, 2), strides=2, prev_layer_or_block=self.conv2)
+
+        # Flatten layer
+        self.flatten = Flatten(name="Flatten", prev_layer_or_block=self.pool1)
+
+        # Fully connected layer
+        self.dense1 = Dense(name="Dense_1", units=dense_units, prev_layer_or_block=self.flatten, activation='relu', wt_scale=wt_scale, wt_init=wt_init)
+
+        # Dropout layer
+        self.dropout = Dropout(name="Dropout", rate=0.5, prev_layer_or_block=self.dense1)
+
+        # Output layer
+        self.output_layer = Dense(name="Output", units=C, prev_layer_or_block=self.dropout, activation='softmax', wt_scale=wt_scale, wt_init=wt_init)
+
+
 
     def __call__(self, x):
         '''Forward pass through the VGG4 network with the data samples `x`.
@@ -72,7 +93,16 @@ class VGG4(network.DeepNetwork):
 
         NOTE: Use the functional API to perform the forward pass through your network!
         '''
-        pass
+        
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.pool1(x)
+        x = self.flatten(x)
+        x = self.dense1(x)
+        x = self.dropout(x)
+        x = self.output_layer(x)
+
+        return x 
 
 
 class VGG6(network.DeepNetwork):

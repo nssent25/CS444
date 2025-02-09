@@ -31,6 +31,9 @@ class DeepNetwork:
         self.output_layer = None
         self.all_net_params = []
 
+        self.input_feats_shape = input_feats_shape
+        self.reg = reg
+
     def compile(self, loss='cross_entropy', optimizer='adam', lr=1e-3, beta_1=0.9, print_summary=True):
         '''Compiles the neural network to prepare for training.
 
@@ -67,9 +70,10 @@ class DeepNetwork:
         self.optimizer_name = optimizer
 
         # Initialize optimizer
-        #TODO: Fill this section in
-
-            # raise ValueError(f'Unknown optimizer {optimizer}')
+        if optimizer.lower() == 'adam':
+            self.opt = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=beta_1)
+        else:
+            raise ValueError(f'Unknown optimizer {optimizer}')
 
         # Do 'fake' forward pass through net to create wts/bias
         x_fake = self.get_one_fake_input()
@@ -116,7 +120,24 @@ class DeepNetwork:
         TODO: Starting with the output layer, traverse the net backward, calling the appropriate method to
         set the training mode in each network layer. Model this process around the summary method.
         '''
-        pass
+        
+        if is_training:
+            # Set the mode in all layers to the training mode
+
+            self.output_layer.set_training_mode(is_training)
+            layer = self.output_layer.get_prev_layer_or_block()
+            while layer is not None:
+                layer.set_training_mode(is_training)
+                layer = layer.get_prev_layer_or_block()
+        else:
+            # Set the mode in all layers to the non-training mode
+            self.output_layer.set_training_mode(is_training)
+            layer = self.output_layer.get_prev_layer_or_block()
+            while layer is not None:
+                layer.set_training_mode(is_training)
+                layer = layer.get_prev_layer_or_block()
+
+
 
     def init_batchnorm_params(self):
         '''Initializes batch norm related parameters in all layers that are using batch normalization.
@@ -178,7 +199,9 @@ class DeepNetwork:
 
         Hint: tf.where might be helpful.
         '''
-        pass
+        
+        acc = tf.reduce_mean(tf.cast(tf.equal(y_true, y_pred), tf.float32))
+        return acc
 
     def predict(self, x, output_layer_net_act=None):
         '''Predicts the class of each data sample in `x` using the passed in `output_layer_net_act`.
@@ -194,7 +217,10 @@ class DeepNetwork:
         tf.constant. tf.ints32. shape=(B,).
             int-coded predicted class for each sample in the mini-batch.
         '''
-        pass
+        if output_layer_net_act is None:
+            output_layer_net_act = self(x)
+
+        return tf.argmax(output_layer_net_act, axis=1)
 
     def loss(self, out_net_act, y, eps=1e-16):
         '''Computes the loss for the current minibatch based on the output layer activations `out_net_act` and int-coded
@@ -222,6 +248,11 @@ class DeepNetwork:
         function in tf_util.py that offers functionality that is similar to arange indexing in NumPy (which you cannot
         do in TensorFlow). Use it!
         '''
+
+        selected_values = arange_index(out_net_act, y)
+
+        # Compute the cross-entropy loss
+        loss = -tf.reduce_mean(tf.math.log(selected_values + eps))
 
         # else:
             # raise ValueError(f'Unknown loss function {self.loss_name}')
@@ -273,7 +304,13 @@ class DeepNetwork:
 
         NOTE: Don't forget to record gradients on a gradient tape!
         '''
-        pass
+        
+        with tf.GradientTape() as tape:
+            out_net_act = self(x_batch)
+            loss = self.loss(out_net_act, y_batch)
+        self.update_params(tape, loss)
+
+        return loss
 
     # @tf.function(jit_compile=True)
     @tf.function
@@ -300,7 +337,15 @@ class DeepNetwork:
 
         NOTE: There should not be any gradient tapes here.
         '''
-        pass
+        
+        out_net_act = self(x_batch)
+        loss = self.loss(out_net_act, y_batch)
+        y_pred = self.predict(x_batch, out_net_act)
+        y_pred = tf.cast(y_pred, tf.int32)
+        y_batch = tf.cast(y_batch, tf.int32)
+        acc = self.accuracy(y_batch, y_pred)
+
+        return acc, loss
 
     def fit(self, x, y, x_val=None, y_val=None, batch_size=128, max_epochs=10000, val_every=1, verbose=True,
             patience=999, lr_patience=999, lr_decay_factor=0.5, lr_max_decays=12):

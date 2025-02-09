@@ -98,7 +98,7 @@ class Layer:
         '''
         return self.is_training
 
-    def set_mode(self, is_training):
+    def set_training_mode(self, is_training): #NOTE: MODIFIED NAME TO SET_TRAINING_MODE FROM SET_MODE
         '''Informs the layer whether the neural network is currently training. Used in Dropout and some other layer
         types.
 
@@ -584,7 +584,6 @@ class Flatten(Layer):
         - While the shape of the input `x` will usually be 4D, it is better to not hard-code this just in case.
         For example, do NOT do compute the number of non-batch inputs as x.shape[1]*x.shape[2]*x.shape[3]
         '''
-        
         return tf.reshape(x, [x.shape[0], -1])
 
     def __str__(self):
