@@ -421,7 +421,54 @@ class DeepNetwork:
         - `evaluate` kicks all the network layers out of training mode (as is required bc it is doing prediction).
         Be sure to bring the network layers back into training mode after you are doing computing val acc+loss.
         '''
+
+        # Set the mode in all layers to the training mode
+        self.set_layer_training_mode(is_training=True)
+
+        # Initialize training variables
+        train_loss_hist, val_loss_hist, val_acc_hist = [], [], []
+        rng = np.random.default_rng(0)  # Fixed random seed for reproducibility
+
+        # Determine the number of training samples
+        N = x.shape[0]
+        indices = np.arange(N)
+
+        # Training loop
+        for e in range(1, max_epochs + 1):  # Start from 1
+            start_time = time.time()
+            rng.shuffle(indices)
+
+            # Mini-batch training
+            epoch_loss = []
+            for i in range(0, N, batch_size):
+                batch_indices = indices[i:i+batch_size]
+                x_batch = tf.gather(x, batch_indices)
+                y_batch = tf.gather(y, batch_indices)
+                
+                loss = self.train_step(x_batch, y_batch)
+                epoch_loss.append(loss.numpy())
+            
+            avg_train_loss = np.mean(epoch_loss)
+            train_loss_hist.append(avg_train_loss)
+
+            # Validation check
+            if x_val is not None and y_val is not None and e % val_every == 0:
+                val_acc, val_loss = self.evaluate(x_val, y_val)
+                val_loss_hist.append(val_loss.numpy())
+                val_acc_hist.append(val_acc.numpy())
+                
+                # Print training progress
+                if verbose:
+                    print(f'Epoch {e}/{max_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
+            
+            # Print epoch time
+            end_time = time.time()
+            if verbose:
+                print(f'Epoch {e} completed in {end_time - start_time:.2f} seconds.')
+        
         print(f'Finished training after {e} epochs!')
+
+
         return train_loss_hist, val_loss_hist, val_acc_hist, e
 
     def evaluate(self, x, y, batch_sz=64):
