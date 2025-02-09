@@ -1,6 +1,6 @@
 '''network.py
 Deep neural network core functionality implemented with the low-level TensorFlow API.
-YOUR NAMES HERE
+Saad Khan and Nithun Selva
 CS444: Deep Learning
 '''
 import time
