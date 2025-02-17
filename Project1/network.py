@@ -123,18 +123,17 @@ class DeepNetwork:
         
         if is_training:
             # Set the mode in all layers to the training mode
-
-            self.output_layer.set_training_mode(is_training)
+            self.output_layer.set_mode(is_training)
             layer = self.output_layer.get_prev_layer_or_block()
             while layer is not None:
-                layer.set_training_mode(is_training)
+                layer.set_mode(is_training)
                 layer = layer.get_prev_layer_or_block()
         else:
             # Set the mode in all layers to the non-training mode
-            self.output_layer.set_training_mode(is_training)
+            self.output_layer.set_mode(is_training)
             layer = self.output_layer.get_prev_layer_or_block()
             while layer is not None:
-                layer.set_training_mode(is_training)
+                layer.set_mode(is_training)
                 layer = layer.get_prev_layer_or_block()
 
 
@@ -427,6 +426,7 @@ class DeepNetwork:
 
         # Initialize training variables
         train_loss_hist, val_loss_hist, val_acc_hist = [], [], []
+        recent_val_losses = [] # For early stopping
         rng = np.random.default_rng(0)  # Fixed random seed for reproducibility
 
         # Determine the number of training samples
@@ -457,6 +457,13 @@ class DeepNetwork:
                 val_loss_hist.append(val_loss.numpy())
                 val_acc_hist.append(val_acc.numpy())
                 
+                # Early stopping
+                recent_val_losses, stop = self.early_stopping(recent_val_losses, val_loss, patience)
+                if stop:
+                    if verbose:
+                        print(f'Early stopping at epoch {e}')
+                    break
+
                 # Print training progress
                 if verbose:
                     print(f'Epoch {e}/{max_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
@@ -468,8 +475,6 @@ class DeepNetwork:
                 print(f'Epoch {e} completed in {end_time - start_time:.2f} seconds.')
         
         print(f'Finished training after {e} epochs!')
-
-
         return train_loss_hist, val_loss_hist, val_acc_hist, e
 
     def evaluate(self, x, y, batch_sz=64):
@@ -570,7 +575,22 @@ class DeepNetwork:
         - It may be helpful to think of `recent_val_losses` as a queue: the current loss value always gets inserted
         either at the beginning or end. The oldest value is then always on the other end of the list.
         '''
-        stop = False
+        # Add current loss to history
+        recent_val_losses.append(curr_val_loss)
+
+        # Don't stop if we haven't collected enough losses yet
+        if len(recent_val_losses) <= patience:
+            return recent_val_losses, False
+
+        # Keep only the most recent losses
+        if len(recent_val_losses) > patience:
+            recent_val_losses = recent_val_losses[-patience:]
+
+        # Stop if the oldest loss is better than all subsequent losses
+        cur_val_loss = recent_val_losses[0]
+        stop = all(loss > cur_val_loss for loss in recent_val_losses[1:])
+
+        return recent_val_losses, stop
 
     def update_lr(self, lr_decay_rate):
         '''Adjusts the learning rate used by the optimizer to be a proportion `lr_decay_rate` of the current learning

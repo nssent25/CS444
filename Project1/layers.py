@@ -98,7 +98,8 @@ class Layer:
         '''
         return self.is_training
 
-    def set_training_mode(self, is_training): #NOTE: MODIFIED NAME TO SET_TRAINING_MODE FROM SET_MODE
+    # NS: Changing name back to set_mode for interoperability with the block code
+    def set_mode(self, is_training): #NOTE: MODIFIED NAME TO SET_TRAINING_MODE FROM SET_MODE
         '''Informs the layer whether the neural network is currently training. Used in Dropout and some other layer
         types.
 

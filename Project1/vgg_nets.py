@@ -5,7 +5,7 @@ CS444: Deep Learning
 '''
 import network
 from layers import Conv2D, MaxPool2D, Flatten, Dropout, Dense
-#from block import VGGConvBlock, VGGDenseBlock
+from block import VGGConvBlock, VGGDenseBlock
 
 
 class VGG4(network.DeepNetwork):
@@ -141,7 +141,45 @@ class VGG6(network.DeepNetwork):
         objects here! The number of lines of code should be comparable or perhaps a little less than VGG4
         (thanks to blocks!).
         '''
-        pass
+        super().__init__(input_feats_shape=input_feats_shape, reg=reg)
+    
+        # First conv block
+        self.conv_block1 = VGGConvBlock(
+            blockname="ConvBlock1",
+            units=filters[0],
+            prev_layer_or_block=None,
+            num_conv_layers=2,
+            wt_scale=wt_scale,
+            wt_init=wt_init
+        )
+
+        # Second conv block
+        self.conv_block2 = VGGConvBlock(
+            blockname="ConvBlock2",
+            units=filters[1],
+            prev_layer_or_block=self.conv_block1,
+            num_conv_layers=2,
+            wt_scale=wt_scale,
+            wt_init=wt_init
+        )
+
+        # Flatten layer
+        self.flatten = Flatten(name="Flatten",prev_layer_or_block=self.conv_block2)
+
+        # Dense block with dropout
+        self.dense_block = VGGDenseBlock(
+            blockname="DenseBlock1",
+            units=dense_units,
+            prev_layer_or_block=self.flatten,
+            num_dense_blocks=1,
+            wt_scale=wt_scale,
+            dropout=True,
+            dropout_rate=0.5,
+            wt_init=wt_init
+        )
+
+        # Output layer
+        self.output_layer = Dense(name="Output", units=C, prev_layer_or_block=self.dense_block, activation='softmax', wt_scale=wt_scale, wt_init=wt_init)
 
     def __call__(self, x):
         '''Forward pass through the VGG6 network with the data samples `x`.
@@ -158,7 +196,13 @@ class VGG6(network.DeepNetwork):
 
         NOTE: Use the functional API to perform the forward pass through your network!
         '''
-        pass
+        x = self.conv_block1(x)
+        x = self.conv_block2(x)
+        x = self.flatten(x)
+        x = self.dense_block(x)
+        x = self.output_layer(x)
+    
+        return x
 
 
 class VGG8(network.DeepNetwork):
