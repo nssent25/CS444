@@ -587,8 +587,8 @@ class DeepNetwork:
             recent_val_losses = recent_val_losses[-patience:]
 
         # Stop if the oldest loss is better than all subsequent losses
-        cur_val_loss = recent_val_losses[0]
-        stop = all(loss > cur_val_loss for loss in recent_val_losses[1:])
+        old_val_loss = recent_val_losses[0]
+        stop = all(loss > old_val_loss for loss in recent_val_losses[1:])
 
         return recent_val_losses, stop
 
