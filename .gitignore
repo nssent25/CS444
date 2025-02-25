@@ -169,3 +169,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+Project1/.DS_Store
+mlp2.py
+wt_initialization.ipynb

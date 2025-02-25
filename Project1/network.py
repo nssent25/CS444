@@ -72,6 +72,8 @@ class DeepNetwork:
         # Initialize optimizer
         if optimizer.lower() == 'adam':
             self.opt = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=beta_1)
+        elif optimizer.lower() == 'adamw':
+            self.opt = tf.keras.optimizers.AdamW(learning_rate=lr, beta_1=beta_1, weight_decay=self.reg)
         else:
             raise ValueError(f'Unknown optimizer {optimizer}')
 
@@ -135,8 +137,6 @@ class DeepNetwork:
             while layer is not None:
                 layer.set_mode(is_training)
                 layer = layer.get_prev_layer_or_block()
-
-
 
     def init_batchnorm_params(self):
         '''Initializes batch norm related parameters in all layers that are using batch normalization.

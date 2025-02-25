@@ -62,9 +62,6 @@ class Layer:
         self.batch_norm_momentum = batch_norm_momentum
         self.do_layer_norm = do_layer_norm
 
-
-
-
     def get_name(self):
         '''Returns the human-readable string name of the current layer.'''
         return self.layer_name
@@ -123,7 +120,6 @@ class Layer:
             self.is_training.assign(True)
         else:
             self.is_training.assign(False)
-
 
     def init_params(self, input_shape):
         '''Initializes the Layer's parameters (wts + bias), if it has any.
@@ -243,7 +239,9 @@ class Layer:
         float.
             The Kaiming gain.
         '''
-        pass
+        if self.act_fun_name == 'relu':
+            return 2.0
+        return 1.0
 
     def is_doing_batchnorm(self):
         '''Returns whether the current layer is using batch normalization.
@@ -291,7 +289,6 @@ class Layer:
         # KEEP ME
         if not self.do_batch_norm:
             return
-
 
     def compute_batch_norm(self, net_in, eps=0.001):
         '''Computes the batch normalization based on on the net input `net_in`.
@@ -404,8 +401,6 @@ class Dense(Layer):
         self.wt_scale = wt_scale
         self.wt_init = wt_init
 
-
-
     def has_wts(self):
         '''Returns whether the Dense layer has weights. This is always true so always return... :)'''
         return True
@@ -427,11 +422,15 @@ class Dense(Layer):
         element of input_shape. This may sound silly, but doing this will prevent you from having to modify this method
         later in the semester :)
         '''
-        
-        # Initialize the weights and biases
-        self.wts = tf.Variable(tf.random.normal([input_shape[-1], self.units], mean=0.0, stddev=self.wt_scale))
-        self.b = tf.Variable(tf.random.normal([self.units], mean=0.0, stddev=self.wt_scale))
-
+        if self.wt_init == 'normal':
+            self.wts = tf.Variable(tf.random.normal([input_shape[-1], self.units], mean=0.0, stddev=self.wt_scale))
+            self.b = tf.Variable(tf.random.normal([self.units], mean=0.0, stddev=self.wt_scale))
+        elif self.wt_init == 'he':
+            std_dev = tf.sqrt(self.get_kaiming_gain() / tf.cast(input_shape[-1], tf.float32))
+            self.b = tf.Variable(tf.zeros(self.units))
+            self.wts = tf.Variable(tf.random.normal([input_shape[-1], self.units], mean=0.0, stddev=std_dev))
+        else:
+            raise ValueError(f'Unknown weight initialization method {self.wt_init}')
 
     def compute_net_input(self, x):
         '''Computes the net input for the current Dense layer.
@@ -565,7 +564,6 @@ class Flatten(Layer):
         
         super().__init__(name, activation='linear', prev_layer_or_block=prev_layer_or_block)
 
-
     def compute_net_input(self, x):
         '''Computes the net input for the current Flatten layer.
 
@@ -650,7 +648,6 @@ class MaxPool2D(Layer):
         
         return tf.nn.max_pool2d(x, ksize=self.pool_size, strides=self.strides, padding=self.padding)
     
-
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,
         but this method is provided to you. You should not need to modify it.
@@ -704,7 +701,6 @@ class Conv2D(Layer):
         self.wt_scale = wt_scale
         self.wt_init = wt_init
 
-
     def has_wts(self):
         '''Returns whether the Conv2D layer has weights. This is always true so always return... :)'''
         return True
@@ -723,11 +719,15 @@ class Conv2D(Layer):
         training.
         - For consistency with the test code, initialize your wts before your biases.
         '''
-        
-        # Initialize the weights and biases
-        self.wts = tf.Variable(tf.random.normal([self.kernel_size[0], self.kernel_size[1], input_shape[-1], self.units], mean=0.0, stddev=self.wt_scale))
-        self.b = tf.Variable(tf.random.normal([self.units], mean=0.0, stddev=self.wt_scale))
-
+        if self.wt_init == 'normal':
+            self.wts = tf.Variable(tf.random.normal([self.kernel_size[0], self.kernel_size[1], input_shape[-1], self.units], mean=0.0, stddev=self.wt_scale))
+            self.b = tf.Variable(tf.random.normal([self.units], mean=0.0, stddev=self.wt_scale))
+        elif self.wt_init == 'he':
+            std_dev = tf.sqrt(self.get_kaiming_gain() / tf.cast(input_shape[-1]*self.kernel_size[0]*self.kernel_size[1], tf.float32))
+            self.b = tf.Variable(tf.zeros(self.units))
+            self.wts = tf.Variable(tf.random.normal([self.kernel_size[0], self.kernel_size[1], input_shape[-1], self.units], mean=0.0, stddev=std_dev))
+        else:
+            raise ValueError(f'Unknown weight initialization method {self.wt_init}')        
 
     def compute_net_input(self, x):
         '''Computes the net input for the current Conv2D layer. Uses SAME boundary conditions.

@@ -118,6 +118,7 @@ class Block:
             string += '\n\t' + layer.__str__()
         return string
 
+
 class VGGConvBlock(Block):
     '''A convolutional block in the VGG family of neural networks. It is composed of the following sequence of layers:
 
@@ -200,13 +201,14 @@ class VGGConvBlock(Block):
             prev_layer_or_block=prev
         )
         self.layers.append(pool)
+        prev = pool
 
         # Dropout
         if dropout:
             dropout_layer = Dropout(
                 name=f"{blockname}/dropout",
                 rate=dropout_rate,
-                prev_layer_or_block=pool
+                prev_layer_or_block=prev
             )
             self.layers.append(dropout_layer)
 
