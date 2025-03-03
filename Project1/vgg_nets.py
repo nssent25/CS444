@@ -250,7 +250,9 @@ class VGG8(network.DeepNetwork):
             prev_layer_or_block=None,
             num_conv_layers=2,
             wt_scale=wt_scale,
-            wt_init=wt_init
+            wt_init=wt_init,
+            dropout=conv_dropout,
+            dropout_rate=conv_dropout_rates[0] if conv_dropout else 0
         )
 
         # Second conv block
@@ -260,7 +262,9 @@ class VGG8(network.DeepNetwork):
             prev_layer_or_block=self.conv_block1,
             num_conv_layers=2,
             wt_scale=wt_scale,
-            wt_init=wt_init
+            wt_init=wt_init,
+            dropout=conv_dropout,
+            dropout_rate=conv_dropout_rates[1] if conv_dropout else 0
         )
 
         # Third conv block
@@ -270,7 +274,9 @@ class VGG8(network.DeepNetwork):
             prev_layer_or_block=self.conv_block2,
             num_conv_layers=2,
             wt_scale=wt_scale,
-            wt_init=wt_init
+            wt_init=wt_init,
+            dropout=conv_dropout,
+            dropout_rate=conv_dropout_rates[2] if conv_dropout else 0
         )
 
         # Flatten layer

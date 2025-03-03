@@ -253,6 +253,9 @@ class DeepNetwork:
         # Compute the cross-entropy loss
         loss = -tf.reduce_mean(tf.math.log(selected_values + eps))
 
+
+
+        
         # else:
             # raise ValueError(f'Unknown loss function {self.loss_name}')
 
@@ -262,8 +265,8 @@ class DeepNetwork:
             all_net_wts = self.get_all_params(wts_only=True)
             reg_term = self.reg*0.5*tf.reduce_sum([tf.reduce_sum(wts**2) for wts in all_net_wts])
             loss = loss + reg_term
-
         return loss
+
 
     def update_params(self, tape, loss):
         '''Do backpropogation: have the optimizer update the network parameters recorded on `tape` based on the
@@ -280,8 +283,12 @@ class DeepNetwork:
         '''
         grads = tape.gradient(loss, self.all_net_params)
         self.opt.apply_gradients(zip(grads, self.all_net_params))
+    
 
-    # @tf.function(jit_compile=True)
+
+
+
+    #tf.function(jit_compile=True)
     @tf.function
     def train_step(self, x_batch, y_batch):
         '''Completely process a single mini-batch of data during training. This includes:
@@ -308,11 +315,13 @@ class DeepNetwork:
             out_net_act = self(x_batch)
             loss = self.loss(out_net_act, y_batch)
         self.update_params(tape, loss)
+        
 
         return loss
+    
 
-    # @tf.function(jit_compile=True)
-    @tf.function
+    #tf.function(jit_compile=True)
+    @tf.function(jit_compile=True)
     def test_step(self, x_batch, y_batch):
         '''Completely process a single mini-batch of data during test/validation time. This includes:
         1. Performing a forward pass of the data through the entire network.
