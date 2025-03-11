@@ -188,7 +188,8 @@ class VGGConvBlock(Block):
                 prev_layer_or_block=prev,
                 activation='relu', 
                 wt_scale=wt_scale,
-                wt_init=wt_init
+                wt_init=wt_init,
+                do_batch_norm=do_batch_norm
             )
             self.layers.append(conv)
             prev = conv
@@ -300,7 +301,8 @@ class VGGDenseBlock(Block):
                 prev_layer_or_block=prev,
                 activation='relu',
                 wt_scale=wt_scale,
-                wt_init=wt_init
+                wt_init=wt_init,
+                do_batch_norm=do_batch_norm
             )
             self.layers.append(dense)
             prev = dense

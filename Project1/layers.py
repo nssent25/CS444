@@ -200,9 +200,16 @@ class Layer:
         '''
         
         net_in = self.compute_net_input(x)
+
+        # batch norm
+        if self.do_batch_norm and self.bn_mean is not None:
+            net_in = self.compute_batch_norm(net_in)
+
         net_act = self.compute_net_activation(net_in)
         if self.output_shape is None:
             self.output_shape = list(net_act.shape)
+            self.init_batchnorm_params()
+
         return net_act
 
     def get_params(self):
@@ -253,7 +260,7 @@ class Layer:
         bool.
             True if the layer has batch normalization turned on, False otherwise.
         '''
-        pass
+        return self.do_batch_norm
 
     def init_batchnorm_params(self):
         '''Initializes the trainable and non-trainable parameters used in batch normalization. This includes the
@@ -289,6 +296,24 @@ class Layer:
         # KEEP ME
         if not self.do_batch_norm:
             return
+
+        # Get the number of units (last dimension)
+        n_units = self.output_shape[-1]
+
+        # Create shape with singleton dimensions for broadcasting
+        param_shape = [1] * (len(self.output_shape) - 1) + [n_units]
+
+        # Initialize trainable parameters
+        self.bn_gain = tf.Variable(tf.ones(param_shape))
+        self.bn_bias = tf.Variable(tf.zeros(param_shape))
+
+        # Initialize non-trainable running statistics
+        self.bn_mean = tf.Variable(tf.zeros(param_shape), trainable=False)
+        self.bn_stdev = tf.Variable(tf.ones(param_shape), trainable=False)
+
+        # Turn off the normal bias
+        if self.b is not None:
+            self.b = tf.Variable(0.0, trainable=False)
 
     def compute_batch_norm(self, net_in, eps=0.001):
         '''Computes the batch normalization based on on the net input `net_in`.
@@ -479,6 +504,25 @@ class Dense(Layer):
         parameters when not training.
         '''
         pass
+        if self.get_mode():
+            # Training mode: compute statistics from current batch
+            batch_mean = tf.reduce_mean(net_in, axis=0, keepdims=True)
+            batch_var = tf.reduce_mean(tf.square(net_in - batch_mean), axis=0, keepdims=True)
+            batch_stdev = tf.sqrt(batch_var)
+
+            # Update running statistics
+            momentum = self.batch_norm_momentum
+            self.bn_mean.assign(momentum * self.bn_mean + (1 - momentum) * batch_mean)
+            self.bn_stdev.assign(momentum * self.bn_stdev + (1 - momentum) * batch_stdev)
+
+            # Standardize using batch statistics
+            normalized = (net_in - batch_mean) / (batch_stdev + eps)
+        else:
+            # Inference mode: use running statistics
+            normalized = (net_in - self.bn_mean) / (self.bn_stdev + eps)
+
+        # Apply gain and bias transformation
+        return self.bn_gain * normalized + self.bn_bias
 
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,
@@ -780,7 +824,25 @@ class Conv2D(Layer):
         - The difference is in the moving average parameters: as in Dense, they are computed over the non-batch
         dimensions. This likely requires a small code change.
         '''
-        pass
+        if self.get_mode():
+            # Training mode: compute statistics from current batch
+            batch_mean = tf.reduce_mean(net_in, axis=[0,1,2], keepdims=True)
+            batch_var = tf.reduce_mean(tf.square(net_in - batch_mean), axis=[0,1,2], keepdims=True)
+            batch_stdev = tf.sqrt(batch_var)
+
+            # Update running statistics
+            momentum = self.batch_norm_momentum
+            self.bn_mean.assign(momentum * self.bn_mean + (1 - momentum) * batch_mean)
+            self.bn_stdev.assign(momentum * self.bn_stdev + (1 - momentum) * batch_stdev)
+
+            # Standardize using batch statistics
+            normalized = (net_in - batch_mean) / (batch_stdev + eps)
+        else:
+            # Inference mode: use running statistics
+            normalized = (net_in - self.bn_mean) / (self.bn_stdev + eps)
+
+        # Apply gain and bias transformation
+        return self.bn_gain * normalized + self.bn_bias
 
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,

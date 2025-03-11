@@ -9,6 +9,23 @@ import tensorflow as tf
 
 from tf_util import arange_index
 
+import sys
+import platform
+
+# Define a decorator function that applies different tf.function settings based on platform
+# Cannot be bothered to keep changing this manually
+def platform_aware_jit(func):
+    # Check if running on macOS
+    if platform.system() == 'Darwin':
+        # macOS - no JIT
+        # print('Running on macOS, no JIT compilation')
+        return tf.function(func)
+    else:
+        # Other platforms - use JIT
+        # print('Running using JIT compilation')
+        return tf.function(jit_compile=True)(func)
+
+
 class DeepNetwork:
     '''The DeepNetwork class is the parent class for specific networks (e.g. VGG).
     '''
@@ -267,7 +284,6 @@ class DeepNetwork:
             loss = loss + reg_term
         return loss
 
-
     def update_params(self, tape, loss):
         '''Do backpropogation: have the optimizer update the network parameters recorded on `tape` based on the
         gradients computed of `loss` with respect to each of the parameters. The variable `self.all_net_params`
@@ -284,12 +300,9 @@ class DeepNetwork:
         grads = tape.gradient(loss, self.all_net_params)
         self.opt.apply_gradients(zip(grads, self.all_net_params))
     
-
-
-
-
-    #tf.function(jit_compile=True)
-    @tf.function
+    # tf.function(jit_compile=True)
+    # @tf.function
+    @platform_aware_jit
     def train_step(self, x_batch, y_batch):
         '''Completely process a single mini-batch of data during training. This includes:
         1. Performing a forward pass of the data through the entire network.
@@ -310,18 +323,16 @@ class DeepNetwork:
 
         NOTE: Don't forget to record gradients on a gradient tape!
         '''
-        
         with tf.GradientTape() as tape:
             out_net_act = self(x_batch)
             loss = self.loss(out_net_act, y_batch)
-        self.update_params(tape, loss)
-        
+        self.update_params(tape, loss)        
 
         return loss
     
-
-    #tf.function(jit_compile=True)
-    @tf.function(jit_compile=True)
+    # tf.function(jit_compile=True)
+    # @tf.function
+    @platform_aware_jit
     def test_step(self, x_batch, y_batch):
         '''Completely process a single mini-batch of data during test/validation time. This includes:
         1. Performing a forward pass of the data through the entire network.
