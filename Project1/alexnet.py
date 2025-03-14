@@ -146,7 +146,7 @@ class AlexNet(network.DeepNetwork):
         self.dropout1 = Dropout(
             name="dropout_1",
             rate=0.5,
-            prev_layer_or_block=self.fc1
+            prev_layer_or_block=self.dense1
         )
         
         self.dense2 = Dense(
@@ -162,7 +162,7 @@ class AlexNet(network.DeepNetwork):
         self.dropout2 = Dropout(
             name="dropout_2",
             rate=0.5,
-            prev_layer_or_block=self.fc2
+            prev_layer_or_block=self.dense2
         )
         
         # Output layer
