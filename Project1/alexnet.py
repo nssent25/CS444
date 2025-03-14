@@ -250,7 +250,7 @@ class MiniAlexNet(network.DeepNetwork):
         self.conv1 = Conv2D(
             name="conv_1",
             units=96,
-            kernel_size=(11, 11),
+            kernel_size=(7, 7),
             strides=2, # reduced from 4 to 2
             prev_layer_or_block=None,
             activation='relu',
