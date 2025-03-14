@@ -365,7 +365,7 @@ class DeepNetwork:
         acc = self.accuracy(y_batch, y_pred)
 
         return acc, loss
-
+    
     def fit(self, x, y, x_val=None, y_val=None, batch_size=128, max_epochs=10000, val_every=1, verbose=True,
             patience=999, lr_patience=999, lr_decay_factor=0.5, lr_max_decays=12):
         '''Trains the neural network on the training samples `x` (and associated int-coded labels `y`).
@@ -440,24 +440,25 @@ class DeepNetwork:
         - `evaluate` kicks all the network layers out of training mode (as is required bc it is doing prediction).
         Be sure to bring the network layers back into training mode after you are doing computing val acc+loss.
         '''
-
         # Set the mode in all layers to the training mode
         self.set_layer_training_mode(is_training=True)
-
+    
         # Initialize training variables
         train_loss_hist, val_loss_hist, val_acc_hist = [], [], []
         recent_val_losses = [] # For early stopping
+        recent_lr_val_losses = [] # For learning rate decay
+        lr_decay_count = 0
         rng = np.random.default_rng(0)  # Fixed random seed for reproducibility
-
+    
         # Determine the number of training samples
         N = x.shape[0]
         indices = np.arange(N)
-
+    
         # Training loop
         for e in range(1, max_epochs + 1):  # Start from 1
             start_time = time.time()
             rng.shuffle(indices)
-
+    
             # Mini-batch training
             epoch_loss = []
             for i in range(0, N, batch_size):
@@ -470,24 +471,32 @@ class DeepNetwork:
             
             avg_train_loss = np.mean(epoch_loss)
             train_loss_hist.append(avg_train_loss)
-
+    
             # Validation check
             if x_val is not None and y_val is not None and e % val_every == 0:
                 val_acc, val_loss = self.evaluate(x_val, y_val)
                 val_loss_hist.append(val_loss.numpy())
                 val_acc_hist.append(val_acc.numpy())
                 
-                # Early stopping
+                # Early stopping for training
                 recent_val_losses, stop = self.early_stopping(recent_val_losses, val_loss, patience)
                 if stop:
                     if verbose:
                         print(f'Early stopping at epoch {e}')
                     break
-
+    
+                
+    
                 # Print training progress
                 if verbose:
                     print(f'Epoch {e}/{max_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
                 self.set_layer_training_mode(is_training=True)
+
+                # Early stopping for learning rate decay
+                recent_lr_val_losses, lr_stop = self.early_stopping(recent_lr_val_losses, val_loss, lr_patience)
+                if lr_stop and lr_decay_count < lr_max_decays:
+                    self.update_lr(lr_decay_factor)
+                    lr_decay_count += 1
             
             # Print epoch time
             end_time = time.time()
@@ -496,7 +505,7 @@ class DeepNetwork:
         
         print(f'Finished training after {e} epochs!')
         return train_loss_hist, val_loss_hist, val_acc_hist, e
-
+    
     def evaluate(self, x, y, batch_sz=64):
         '''Evaluates the accuracy and loss on the data `x` and labels `y`. Breaks the dataset into mini-batches for you
         for efficiency.
@@ -632,5 +641,8 @@ class DeepNetwork:
         1. Update the optimizer's learning rate.
         2. Print out the optimizer's learning rate before and after the change.
         '''
+
+
         print('Current lr=', self.opt.learning_rate.numpy(), end=' ')
+        self.opt.learning_rate.assign(self.opt.learning_rate * lr_decay_rate)
         print('Updated lr=', self.opt.learning_rate.numpy())
