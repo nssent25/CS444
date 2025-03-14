@@ -634,3 +634,115 @@ class DeepNetwork:
         '''
         print('Current lr=', self.opt.learning_rate.numpy(), end=' ')
         print('Updated lr=', self.opt.learning_rate.numpy())
+
+    def save_weights(self, file='weights.npy'):
+        """Save network weights to disk
+
+        Parameters:
+        -----------
+        network: DeepNetwork
+            The network whose parameters should be saved
+        file: str
+            File where weights should be saved
+        """
+        # Create dictionary to store all weights
+        weights_dict = {}
+
+        # Traverse the network to collect all parameters
+        layer = self.output_layer
+        layer_index = 0
+
+        while layer is not None:
+            layer_name = layer.get_name()
+
+            # Save weights if layer has them
+            if hasattr(layer, 'wts') and layer.wts is not None:
+                weights_dict[f"{layer_name}/weights"] = layer.wts.numpy()
+
+            # Save biases if layer has them
+            if hasattr(layer, 'b') and layer.b is not None:
+                weights_dict[f"{layer_name}/bias"] = layer.b.numpy()
+
+            # Save batch normalization parameters if they exist
+            if hasattr(layer, 'bn_gain') and layer.bn_gain is not None:
+                weights_dict[f"{layer_name}/bn_gain"] = layer.bn_gain.numpy()
+
+            if hasattr(layer, 'bn_bias') and layer.bn_bias is not None:
+                weights_dict[f"{layer_name}/bn_bias"] = layer.bn_bias.numpy()
+
+            if hasattr(layer, 'bn_mean') and layer.bn_mean is not None:
+                weights_dict[f"{layer_name}/bn_mean"] = layer.bn_mean.numpy()
+
+            if hasattr(layer, 'bn_stdev') and layer.bn_stdev is not None:
+                weights_dict[f"{layer_name}/bn_stdev"] = layer.bn_stdev.numpy()
+
+            # Move to previous layer
+            layer = layer.get_prev_layer_or_block()
+            layer_index += 1
+
+        # Save the weights dictionary
+        np.save(f"{file}", weights_dict)
+        print(f"Network weights saved to {file}")
+
+def load_weights(self, file='weights.npy'):
+    """Load network weights from disk
+    
+    Parameters:
+    -----------
+    network: DeepNetwork
+        The network whose parameters should be loaded
+    file: str
+        File from which weights should be loaded from
+    
+    Returns:
+    --------
+    bool:
+        True if weights were loaded successfully, False otherwise
+    """
+    # Check if file exists
+    if not os.path.exists(f"{file}"):
+        print(f"Error: Could not find weights file at {file}")
+        return False
+    
+    # Load the weights dictionary
+    try:
+        weights_dict = np.load(f"{file}", allow_pickle=True).item()
+    except:
+        print(f"Error: Could not load weights from {file}")
+        return False
+    
+    # Make sure we initialize network parameters before loading
+    x_fake = self.get_one_fake_input()
+    self(x_fake)
+    
+    # Traverse the network and load parameters
+    layer = self.output_layer
+    while layer is not None:
+        layer_name = layer.get_name()
+        
+        # Load weights if they exist
+        if f"{layer_name}/weights" in weights_dict and hasattr(layer, 'wts'):
+            layer.wts.assign(weights_dict[f"{layer_name}/weights"])
+        
+        # Load biases if they exist
+        if f"{layer_name}/bias" in weights_dict and hasattr(layer, 'b'):
+            layer.b.assign(weights_dict[f"{layer_name}/bias"])
+        
+        # Load batch normalization parameters if they exist
+        if f"{layer_name}/bn_gain" in weights_dict and hasattr(layer, 'bn_gain') and layer.bn_gain is not None:
+            layer.bn_gain.assign(weights_dict[f"{layer_name}/bn_gain"])
+        
+        if f"{layer_name}/bn_bias" in weights_dict and hasattr(layer, 'bn_bias') and layer.bn_bias is not None:
+            layer.bn_bias.assign(weights_dict[f"{layer_name}/bn_bias"])
+        
+        if f"{layer_name}/bn_mean" in weights_dict and hasattr(layer, 'bn_mean') and layer.bn_mean is not None:
+            layer.bn_mean.assign(weights_dict[f"{layer_name}/bn_mean"])
+        
+        if f"{layer_name}/bn_stdev" in weights_dict and hasattr(layer, 'bn_stdev') and layer.bn_stdev is not None:
+            layer.bn_stdev.assign(weights_dict[f"{layer_name}/bn_stdev"])
+        
+        # Move to previous layer
+        layer = layer.get_prev_layer_or_block()
+    
+    print(f"Network weights loaded from {file}")
+    return True
