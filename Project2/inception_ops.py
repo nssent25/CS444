@@ -82,5 +82,6 @@ def global_avg_pooling_2d(x):
         The activations averaged across space in each of the K filters.
 
     NOTE: You should use 100% TensorFlow to implement this, since you will call this in your InceptionNet.
-    '''
-    pass
+    '''    
+    # Calculate the mean across Iy and Ix
+    return tf.reduce_mean(x, axis=[1, 2])

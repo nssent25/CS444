@@ -73,7 +73,113 @@ class InceptionNet(network.DeepNetwork):
         - The only requirement on your variable names is that you MUST name your output layer `self.output_layer`.
         - Use helpful names for your layers and variables. You will have to live with them!
         '''
-        pass
+        super().__init__(input_feats_shape, reg)
+        
+        # Initial convolution layer
+        self.conv1 = Conv2D(
+            name='Conv2D_1',
+            units=64,
+            kernel_size=(3, 3),
+            prev_layer_or_block=None,
+            wt_init='he',
+            do_batch_norm=True
+        )
+        
+        # First max pooling layer
+        self.maxpool1 = MaxPool2D(
+            name='MaxPool3x3_0',
+            pool_size=(3, 3),
+            strides=2,
+            padding='SAME',
+            prev_layer_or_block=self.conv1
+        )
+        
+        # First two inception blocks
+        self.inception1 = InceptionBlock(
+            blockname='Inception1',
+            branch1_units=32,
+            branch2_units=(32, 64),
+            branch3_units=(16, 32),
+            branch4_units=32,
+            prev_layer_or_block=self.maxpool1
+        )
+        
+        self.inception2 = InceptionBlock(
+            blockname='Inception2',
+            branch1_units=64,
+            branch2_units=(64, 128),
+            branch3_units=(32, 64),
+            branch4_units=64,
+            prev_layer_or_block=self.inception1
+        )
+        
+        # Second max pooling layer
+        self.maxpool2 = MaxPool2D(
+            name='MaxPool3x3_1',
+            pool_size=(3, 3),
+            strides=2,
+            padding='SAME',
+            prev_layer_or_block=self.inception2
+        )
+
+        # Next three inception blocks
+        self.inception3 = InceptionBlock(
+            blockname='Inception3',
+            branch1_units=64,
+            branch2_units=(96, 128),
+            branch3_units=(32, 64),
+            branch4_units=64,
+            prev_layer_or_block=self.maxpool2
+        )
+        
+        self.inception4 = InceptionBlock(
+            blockname='Inception4',
+            branch1_units=64,
+            branch2_units=(64, 128),
+            branch3_units=(32, 64),
+            branch4_units=64,
+            prev_layer_or_block=self.inception3
+        )
+        
+        self.inception5 = InceptionBlock(
+            blockname='Inception5',
+            branch1_units=128,
+            branch2_units=(128, 196),
+            branch3_units=(64, 128),
+            branch4_units=128,
+            prev_layer_or_block=self.inception4
+        )
+        
+        # Final max pooling layer
+        self.maxpool3 = MaxPool2D(
+            name='MaxPool3x3_2',
+            pool_size=(3, 3),
+            strides=2,
+            padding='SAME',
+            prev_layer_or_block=self.inception5
+        )
+        
+        # Global average pooling
+        self.globalpool = GlobalAveragePooling2D(
+            name='GlobalPool',
+            prev_layer_or_block=self.maxpool3
+        )
+        
+        # Dropout layer
+        self.dropout = Dropout(
+            name='Dropout',
+            rate=0.4,
+            prev_layer_or_block=self.globalpool
+        )
+
+        # Output layer
+        self.output_layer = Dense(
+            name='Output',
+            units=C,
+            activation='softmax',
+            prev_layer_or_block=self.dropout,
+            wt_init='he'
+        )
 
     def __call__(self, x):
         '''Forward pass through the InceptionNet with the data samples `x`.
@@ -88,4 +194,16 @@ class InceptionNet(network.DeepNetwork):
         tf.constant. tf.float32s. shape=(B, C).
             Activations produced by the output layer to the data.
         '''
-        pass
+        x = self.conv1(x)
+        x = self.maxpool1(x)
+        x = self.inception1(x)
+        x = self.inception2(x)
+        x = self.maxpool2(x)
+        x = self.inception3(x)
+        x = self.inception4(x)
+        x = self.inception5(x)
+        x = self.maxpool3(x)
+        x = self.globalpool(x)
+        x = self.dropout(x)
+        x = self.output_layer(x)
+        return x

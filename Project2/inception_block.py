@@ -63,8 +63,69 @@ class InceptionBlock(block.Block):
         it is. For example, 'Inception1/conv_0'. This will help making sense of the summary print outs when the net is
         compiled.
         '''
-        pass
-
+        # Call the parent constructor
+        super().__init__(blockname, prev_layer_or_block)
+        
+        # Branch 1: 1x1 convolution
+        self.branch1_conv1x1 = Conv2D1x1(
+            name=f"{blockname}/branch1_0_conv1x1",
+            units=branch1_units,
+            prev_layer_or_block=prev_layer_or_block
+        )
+        self.layers.append(self.branch1_conv1x1)
+        
+        # Branch 2: 1x1 convolution → 3x3 2D convolution
+        self.branch2_conv1x1 = Conv2D1x1(
+            name=f"{blockname}/branch2_0_conv1x1",
+            units=branch2_units[0],
+            prev_layer_or_block=prev_layer_or_block
+        )
+        self.layers.append(self.branch2_conv1x1)
+        
+        self.branch2_conv3x3 = Conv2D(
+            name=f"{blockname}/branch2_1_conv3x3",
+            units=branch2_units[1],
+            kernel_size=(3, 3),
+            prev_layer_or_block=self.branch2_conv1x1,
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.branch2_conv3x3)
+        
+        # Branch 3: 1x1 convolution → 5x5 2D convolution
+        self.branch3_conv1x1 = Conv2D1x1(
+            name=f"{blockname}/branch3_0_conv1x1",
+            units=branch3_units[0],
+            prev_layer_or_block=prev_layer_or_block
+        )
+        self.layers.append(self.branch3_conv1x1)
+        
+        self.branch3_conv5x5 = Conv2D(
+            name=f"{blockname}/branch3_1_conv5x5",
+            units=branch3_units[1],
+            kernel_size=(5, 5),
+            prev_layer_or_block=self.branch3_conv1x1,
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.branch3_conv5x5)
+        
+        # Branch 4: 3x3 max pooling → 1x1 convolution
+        self.branch4_maxpool = MaxPool2D(
+            name=f"{blockname}/branch4_0_maxpool3x3",
+            pool_size=(3, 3),
+            strides=1,
+            prev_layer_or_block=prev_layer_or_block,
+            padding='SAME'  # Use SAME padding to maintain spatial dimensions
+        )
+        self.layers.append(self.branch4_maxpool)
+        
+        self.branch4_conv1x1 = Conv2D1x1(
+            name=f"{blockname}/branch4_1_conv1x1",
+            units=branch4_units,
+            prev_layer_or_block=self.branch4_maxpool
+        )
+        self.layers.append(self.branch4_conv1x1)
 
     def __call__(self, x):
         '''Forward pass through the Inception Block the activations `x`.
@@ -81,4 +142,17 @@ class InceptionBlock(block.Block):
             Activations produced by each Inception block branch, concatenated together along the neuron dimension.
             B1, B2_1, B3_1, B4 refer to the number of neurons at the end of each of the 4 branches.
         '''
-        pass
+        # Branch 1: 1x1 convolution
+        branch1_output = self.branch1_conv1x1(x)
+        
+        # Branch 2: 1x1 convolution → 3x3 2D convolution
+        branch2_output = self.branch2_conv3x3(self.branch2_conv1x1(x))
+        
+        # Branch 3: 1x1 convolution → 5x5 2D convolution
+        branch3_output = self.branch3_conv5x5(self.branch3_conv1x1(x))
+        
+        # Branch 4: 3x3 max pooling → 1x1 convolution
+        branch4_output = self.branch4_conv1x1(self.branch4_maxpool(x))
+        
+        # Concatenate all branch outputs along the neuron/channel dimension (axis=3)
+        return tf.concat([branch1_output, branch2_output, branch3_output, branch4_output], axis=3)
