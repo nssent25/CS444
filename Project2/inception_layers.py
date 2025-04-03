@@ -40,7 +40,9 @@ class Conv2D1x1(layers.Conv2D):
 
         NOTE: We always want to use He weight initialization :)
         '''
-        pass
+        super().__init__(name, units, kernel_size=(1, 1), strides=strides, 
+                         activation=activation, prev_layer_or_block=prev_layer_or_block, 
+                         wt_init='he', do_batch_norm=do_batch_norm)
 
     def init_params(self, input_shape):
         '''Initializes the Conv2D1x1 layer's weights and biases EXCLUSIVELY using He initialization.
@@ -54,6 +56,13 @@ class Conv2D1x1(layers.Conv2D):
         NOTE: This is the same as the Conv2D method except for the 2D shape of the weights.
         '''
         N, I_y, I_x, n_chans = input_shape
+
+        # Use He initialization
+        std_dev = tf.sqrt(self.get_kaiming_gain() / tf.cast(n_chans, tf.float32))
+        
+        # Initialize weights for 1x1 convolution
+        self.wts = tf.Variable(tf.random.normal([n_chans, self.units], mean=0.0, stddev=std_dev))
+        self.b = tf.Variable(tf.zeros(self.units))
 
     def compute_net_input(self, x):
         '''Computes the net input for the current 1x1 2D Convolution layer.
@@ -76,7 +85,15 @@ class Conv2D1x1(layers.Conv2D):
 
         NOTE: Don't forget the bias and to pass along the stride!
         '''
-        pass
+        # Lazy initialization
+        if self.wts is None:
+            self.init_params(x.shape)
+            
+        # Use the conv_1x1_batch function from inception_ops
+        net_in = conv_1x1_batch(x, self.wts[ :, :], strides=self.strides)
+        
+        # Add bias
+        return net_in + self.b
 
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,
@@ -103,7 +120,7 @@ class GlobalAveragePooling2D(layers.Layer):
 
         TODO: Call the superclass constructor, passing in the appropriate information.
         '''
-        pass
+        super().__init__(name, activation='linear', prev_layer_or_block=prev_layer_or_block)
 
     def compute_net_input(self, x):
         '''Computes the net input using 2D global average pooling.
@@ -120,7 +137,7 @@ class GlobalAveragePooling2D(layers.Layer):
 
         NOTE: You should defer to your function in inception_ops.
         '''
-        pass
+        return global_avg_pooling_2d(x)
 
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,

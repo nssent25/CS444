@@ -28,6 +28,12 @@ def conv_1x1(x, filters):
     Iy, Ix, n_chans = x.shape
     n_chans, n_units = filters.shape
 
+    x_reshaped = tf.reshape(x, [Iy * Ix, n_chans])
+    output = tf.matmul(x_reshaped, filters)
+    output = tf.reshape(output, [Iy, Ix, n_units])
+    
+    return output
+
 def conv_1x1_batch(x, filters, strides=1):
     '''Performs 1x1 convolution to the mini-batch of input images `x` with the filters `filters`.
     This function should use the BATCH matrix multiplication approach.
@@ -52,6 +58,15 @@ def conv_1x1_batch(x, filters, strides=1):
     B, Iy, Ix, n_chans = x.shape
     n_chans, n_units = filters.shape
 
+    if strides > 1:
+        x = x[:, ::strides, ::strides, :]
+        
+    B, strided_Iy, strided_Ix, n_chans = x.shape
+    x_reshaped = tf.reshape(x, [B * strided_Iy * strided_Ix, n_chans])
+    output = tf.matmul(x_reshaped, filters)
+    output = tf.reshape(output, [B, strided_Iy, strided_Ix, n_units])
+    
+    return output
 
 def global_avg_pooling_2d(x):
     '''Performs 2D global average pooling on the mini-batch of images `x`.
