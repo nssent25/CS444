@@ -47,6 +47,8 @@ def load_dataset(name):
         (x, y), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
     elif name == 'mnist':
         (x, y), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    elif name == 'cifar100':
+        (x, y), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
     else:
         raise ValueError(f"Dataset name {name} not recognized.")
     
