@@ -768,8 +768,8 @@ class Conv2D(Layer):
             self.b = tf.Variable(tf.random.normal([self.units], mean=0.0, stddev=self.wt_scale))
         elif self.wt_init == 'he':
             std_dev = tf.sqrt(self.get_kaiming_gain() / tf.cast(input_shape[-1]*self.kernel_size[0]*self.kernel_size[1], tf.float32))
-            self.b = tf.Variable(tf.zeros(self.units))
             self.wts = tf.Variable(tf.random.normal([self.kernel_size[0], self.kernel_size[1], input_shape[-1], self.units], mean=0.0, stddev=std_dev))
+            self.b = tf.Variable(tf.zeros(self.units))
         else:
             raise ValueError(f'Unknown weight initialization method {self.wt_init}')        
 

@@ -42,7 +42,21 @@ def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, firs
     preprending the stack name to which it belongs. For example, if this is stack_1, call the first two blocks
     'stack_1/block_1' and 'stack_1/block_2'.
     '''
-    pass
+    blocks = []
+    for i in range(num_blocks):
+        blockname = f"{stackname}/block_{i+1}"
+        stride = first_block_stride if i == 0 else 1  # Apply stride only to the first block
+
+        res_block = ResidualBlock(
+            blockname=blockname,
+            units=units,
+            prev_layer_or_block=prev_layer_or_block,
+            strides=stride
+        )
+        blocks.append(res_block)
+        prev_layer_or_block = res_block  # Update prev_layer_or_block for the next block
+
+    return blocks
 
 
 class ResNet(network.DeepNetwork):
@@ -63,7 +77,9 @@ class ResNet(network.DeepNetwork):
 
         Hint: you are storing all layers/blocks sequentially in self.layers and there are NO skip connections acrossblocks ;)
         '''
-        pass
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
     def summary(self):
         '''Custom toString method for ResNets'''
@@ -113,7 +129,52 @@ class ResNet8(ResNet):
         - The only requirement on your variable names is that you MUST name your output layer `self.output_layer`.
         - Use helpful names for your layers and variables. You will have to live with them!
         '''
-        pass
+        super().__init__(input_feats_shape, reg)
+        self.layers = []
+
+        # Initial Conv2D layer
+        self.conv = Conv2D(
+            name='Conv2D_1',
+            units=filters,
+            kernel_size=(3, 3),
+            prev_layer_or_block=None,
+            activation='relu',
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.conv)
+        prev_layer = self.conv
+
+        # Stack of Residual Blocks
+        # The first block has stride 1, the others have stride 2
+        strides = [1, 2, 2]
+        for i in range(3):
+            res_block = ResidualBlock(
+                blockname=f'ResidualBlock{i+1}',
+                units=block_units[i],
+                prev_layer_or_block=prev_layer,
+                strides=strides[i]
+            )
+            self.layers.append(res_block)
+            prev_layer = res_block
+
+        # Global Average Pooling
+        self.global_pool = GlobalAveragePooling2D(
+            name='GlobalAvgPool2D',
+            prev_layer_or_block=prev_layer
+        )
+        self.layers.append(self.global_pool)
+        prev_layer = self.global_pool
+
+        # Output Dense layer
+        self.output_layer = Dense(
+            name='Output',
+            units=C,
+            activation='softmax',
+            prev_layer_or_block=prev_layer,
+            wt_init='he'
+        )
+        self.layers.append(self.output_layer)
 
 
 class ResNet18(ResNet):
@@ -151,4 +212,52 @@ class ResNet18(ResNet):
         3. Remember that although Residual Blocks have parallel branches, the macro-level ResNet layers/blocks
         are arranged sequentially.
         '''
-        pass
+        super().__init__(input_feats_shape, reg)
+        self.layers = []
+
+        # Initial Conv2D layer
+        self.conv = Conv2D(
+            name='conv_1',
+            units=filters,
+            kernel_size=(3, 3),
+            prev_layer_or_block=None,
+            activation='relu',
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.conv)
+        prev_layer = self.conv
+
+        # Stacks of Residual Blocks
+        num_blocks_per_stack = 2
+        first_block_strides = [1, 2, 2, 2]  # Stride for the first block in each stack
+
+        for i in range(4):  # 4 stacks
+            stack_name = f'stack_{i+1}'
+            blocks = stack_residualblocks(
+                stackname=stack_name,
+                units=block_units[i],
+                num_blocks=num_blocks_per_stack,
+                prev_layer_or_block=prev_layer,
+                first_block_stride=first_block_strides[i]
+            )
+            self.layers.extend(blocks)
+            prev_layer = blocks[-1]  # Last block in the stack becomes the prev_layer for the next stack
+
+        # Global Average Pooling
+        self.global_pool = GlobalAveragePooling2D(
+            name='global_avg_pool',
+            prev_layer_or_block=prev_layer
+        )
+        self.layers.append(self.global_pool)
+        prev_layer = self.global_pool
+
+        # Output Dense layer
+        self.output_layer = Dense(
+            name='output',
+            units=C,
+            activation='softmax',
+            prev_layer_or_block=prev_layer,
+            wt_init='he'
+        )
+        self.layers.append(self.output_layer)

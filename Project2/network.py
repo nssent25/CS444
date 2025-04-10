@@ -163,6 +163,11 @@ class DeepNetwork:
         TODO: Starting with the output layer, traverse the net backward, calling the appropriate method to
         initialize the batch norm parameters in each network layer. Model this process around the summary method.
         '''
+        layer = self.output_layer
+        while layer is not None:
+            if hasattr(layer, 'init_batchnorm_params'):
+                layer.init_batchnorm_params()
+            layer = layer.get_prev_layer_or_block()
         pass
 
     def get_all_params(self, wts_only=False):
