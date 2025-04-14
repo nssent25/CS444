@@ -10,9 +10,10 @@ import network
 from layers import Conv2D, Dense
 from inception_layers import GlobalAveragePooling2D
 from residual_block import ResidualBlock
+from bottleneck_block import BottleneckBlock
 
 
-def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, first_block_stride=1, block_type='residual'):
+def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, first_block_stride=1, block_type='residual', expansion=4):
     '''Creates a stack of `num_blocks` Residual Blocks, each with `units` neurons.
 
     Parameters:
@@ -31,7 +32,9 @@ def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, firs
         The stride for ALL blocks in the stack after the first ALWAYS is 1.
     block_type: str.
         Ignore for base project. Option here to help in case you want to build very deep ResNets (e.g. ResNet-50)
-        for Extensions, which use 'bottleneck' blocks.
+        for Extensions, which use 'bottleneck' blocks.    
+    expansion: int.
+        Expansion factor for bottleneck blocks. Only used when block_type='bottleneck'.
 
     Returns:
     --------
@@ -47,14 +50,25 @@ def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, firs
         blockname = f"{stackname}/block_{i+1}"
         stride = first_block_stride if i == 0 else 1  # Apply stride only to the first block
 
-        res_block = ResidualBlock(
-            blockname=blockname,
-            units=units,
-            prev_layer_or_block=prev_layer_or_block,
-            strides=stride
-        )
-        blocks.append(res_block)
-        prev_layer_or_block = res_block  # Update prev_layer_or_block for the next block
+        if block_type == 'residual':
+            block = ResidualBlock(
+                blockname=blockname,
+                units=units,
+                prev_layer_or_block=prev_layer_or_block,
+                strides=stride
+            )
+        elif block_type == 'bottleneck':
+            block = BottleneckBlock(
+                blockname=blockname,
+                units=units,
+                prev_layer_or_block=prev_layer_or_block,
+                expansion=expansion,
+                strides=stride
+            )
+        else:
+            raise ValueError(f"Unknown block_type: {block_type}. Use 'residual' or 'bottleneck'.")
+        blocks.append(block)
+        prev_layer_or_block = block  # Update prev_layer_or_block for the next block
 
     return blocks
 
@@ -244,6 +258,82 @@ class ResNet18(ResNet):
             self.layers.extend(blocks)
             prev_layer = blocks[-1]  # Last block in the stack becomes the prev_layer for the next stack
 
+        # Global Average Pooling
+        self.global_pool = GlobalAveragePooling2D(
+            name='global_avg_pool',
+            prev_layer_or_block=prev_layer
+        )
+        self.layers.append(self.global_pool)
+        prev_layer = self.global_pool
+
+        # Output Dense layer
+        self.output_layer = Dense(
+            name='output',
+            units=C,
+            activation='softmax',
+            prev_layer_or_block=prev_layer,
+            wt_init='he'
+        )
+        self.layers.append(self.output_layer)
+
+
+class ResNet50(ResNet):
+    '''The ResNet50 network with bottleneck blocks. Structure:
+    
+    Conv2D → 4 stacks of Bottleneck Blocks → GlobalAveragePooling2D → Dense
+    
+    Stacks contain [3, 4, 6, 3] bottleneck blocks respectively.
+    '''
+    def __init__(self, C=100, input_feats_shape=(32,32,3), filters=64, block_units=(64, 128, 256, 512), reg=0):
+        '''ResNet50 constructor
+        
+        Parameters:
+        -----------
+        C: int.
+            Number of classes in the dataset.
+        input_feats_shape: tuple.
+            The shape of input data WITHOUT the batch dimension.
+        filters: int.
+            Number of filters in the 1st 2D conv layer.
+        block_units: tuple of ints.
+            Number of output filters in the final 1x1 conv of each bottleneck block stack.
+            Note: For ResNet-50, these are typically [256, 512, 1024, 2048].
+        reg: float.
+            Regularization strength.
+        '''
+        super().__init__(input_feats_shape, reg)
+        self.layers = []
+        
+        # Initial Conv2D layer
+        self.conv = Conv2D(
+            name='conv_1',
+            units=filters,
+            kernel_size=(3, 3),
+            prev_layer_or_block=None,
+            activation='relu',
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.conv)
+        prev_layer = self.conv
+        
+        # Stacks of Bottleneck Blocks
+        num_blocks = [3, 4, 6, 3]  # Standard for ResNet-50
+        first_block_strides = [1, 2, 2, 2]  # Stride for the first block in each stack
+        
+        for i in range(4):  # 4 stacks
+            stack_name = f'stack_{i+1}'
+            blocks = stack_residualblocks(
+                stackname=stack_name,
+                units=block_units[i],
+                num_blocks=num_blocks[i],
+                prev_layer_or_block=prev_layer,
+                first_block_stride=first_block_strides[i],
+                block_type='bottleneck'
+            )
+            self.layers.extend(blocks)
+            prev_layer = blocks[-1]  # Last block becomes the prev_layer for the next stack
+        
         # Global Average Pooling
         self.global_pool = GlobalAveragePooling2D(
             name='global_avg_pool',
