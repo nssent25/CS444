@@ -386,7 +386,7 @@ class Layer:
 class Dense(Layer):
     '''Neural network layer that uses Dense net input.'''
     def __init__(self, name, units, activation='relu', wt_scale=1e-3, prev_layer_or_block=None,
-                 wt_init='normal', do_batch_norm=False, do_layer_norm=False):
+                 wt_init='he', do_batch_norm=False, do_layer_norm=False):
         '''Dense layer constructor.
 
         Parameters:
