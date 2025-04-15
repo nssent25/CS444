@@ -702,7 +702,7 @@ class MaxPool2D(Layer):
 class Conv2D(Layer):
     '''A 2D convolutional layer'''
     def __init__(self, name, units, kernel_size=(1, 1), strides=1, activation='relu', wt_scale=1e-3,
-                 prev_layer_or_block=None, wt_init='normal', do_batch_norm=False):
+                 prev_layer_or_block=None, wt_init='he', do_batch_norm=False):
         '''Conv2D layer constructor.
 
         Parameters:

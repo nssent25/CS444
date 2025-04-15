@@ -40,7 +40,15 @@ class CBOW(network.DeepNetwork):
         1. Call the superclass constructor to pass along parameters that `DeepNetwork` has in common.
         2. Build out the CBOW network.
         '''
-        pass
+        # Call the superclass constructor
+        super().__init__(input_feats_shape=input_feats_shape, reg=reg)
+        self.C = C
+        self.embedding_dim = embedding_dim
+        
+        # Hidden layer
+        self.hidden = DenseEmbedding('Hidden', units=embedding_dim)
+        # Output layer
+        self.output_layer = Dense('Output', units=C, activation='softmax', prev_layer_or_block=self.hidden)
 
     def __call__(self, x):
         '''Forward pass through the CBOW with the data samples `x`.
@@ -55,7 +63,9 @@ class CBOW(network.DeepNetwork):
         tf.constant. tf.float32s. shape=(B, C).
             Activations produced by the output layer to the data.
         '''
-        pass
+        x = self.hidden(x)
+        x = self.output_layer(x)
+        return x
 
     def fit(self, x, y, batch_size=4096, epochs=32, print_every=1, verbose=True):
         '''Trains CBOW on pairs of context word indices (samples `x`) and target word indices (labels `y`).
@@ -85,14 +95,55 @@ class CBOW(network.DeepNetwork):
         NOTE: You are essentially removing/simplying for current training loop here (e.g. remove val set support, early
         stopping, learning rate decay, etc.)
         '''
+        # Set the mode in all layers to training mode
+        self.set_layer_training_mode(is_training=True)
+        
+        # Initialize history to track losses
+        train_loss_hist = []
+        rng = np.random.default_rng(0)  # Fixed random seed for reproducibility
+    
+        # Get number of samples
+        N = x.shape[0]
+        indices = np.arange(N)    
+        
+        if verbose:
+            print(f'Beginning training for {epochs} epochs with batch size {batch_size}...')
+        
+        # Training loop
+        for e in range(1, epochs + 1):
+            start_time = time.time()
+            rng.shuffle(indices)
+                    
+            # Mini-batch training
+            epoch_losses = []
+            for i in range(0, N, batch_size):
+                batch_indices = indices[i:i+batch_size]
+                x_batch = tf.gather(x, batch_indices)
+                y_batch = tf.gather(y, batch_indices)
+                
+                loss = self.train_step(x_batch, y_batch)
+                epoch_losses.append(loss.numpy())
+            
+            avg_loss = np.mean(epoch_losses)
+            train_loss_hist.append(avg_loss)
+            
+            # Print progress
+            if verbose and e % print_every == 0:
+                end_time = time.time()
+                print(f'Epoch {e}/{epochs} - Loss: {avg_loss:.4f} - Time: {end_time - start_time:.2f}s')
+        
+        if verbose:
+            print(f'Finished training after {e} epochs!')
+        
+        return train_loss_hist
 
     def get_word_embedding(self, wordind):
         '''Given the word index `wordind` retrieve and return the corresponding embedding vector.'''
-        pass
+        return tf.gather(self.hidden.get_wts(), wordind)
 
     def get_all_embeddings(self):
         '''Retrieve and return the embedding vectors for ALL words in the vocab.'''
-        pass
+        return self.hidden.get_wts()
 
     def save_embeddings(self, path='export', filename='embeddings.npz'):
         '''Saves the embeddings to disk.
