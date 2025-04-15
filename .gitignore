@@ -172,3 +172,4 @@ cython_debug/
 Project1/.DS_Store
 mlp2.py
 wt_initialization.ipynb
+Project3/data/Amazon_Fashion.jsonl
