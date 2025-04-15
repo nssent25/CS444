@@ -289,16 +289,12 @@ def get_dataset_word2vec(N_reviews=40000, verbose=False):
     Python list of str.
         The vocabulary / list of unique words in the corpus.
     '''
-    # Get corpus
+    # Load
     corpus, sentence_ratings, review_ids = make_corpus(N_reviews=N_reviews, verbose=verbose)
-    
-    # Get vocabulary
     vocab = find_unique_words(corpus)
     
-    # Get word-to-index mapping
-    word2ind = make_word2ind_mapping(vocab)
-    
     # Get target and context words
+    word2ind = make_word2ind_mapping(vocab)
     targets_int, contexts_int = make_target_context_word_lists(corpus, word2ind)
     
     if verbose:
