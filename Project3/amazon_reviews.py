@@ -110,8 +110,41 @@ def make_corpus(N_reviews, min_sent_size=2, max_sent_len=30, verbose=False):
     4. Make sure only sentences get added to the corpus that are above the min length and prune sentences that are too
     long.
     '''
-    pass
-
+    # Load reviews and ratings
+    reviews, ratings = load_reviews_and_ratings(file_path='data/Amazon_Fashion.jsonl', N_reviews=N_reviews)
+    
+    corpus = []
+    sentence_ratings = []
+    review_ids = []
+    
+    # Process each review
+    for review_idx, (review, rating) in enumerate(zip(reviews, ratings)):
+        sentences = review.split('.')
+        
+        for sentence in sentences:
+            words = tokenize_words(sentence)
+            
+            # Too short
+            if len(words) < min_sent_size:
+                continue
+                
+            # Too long
+            if len(words) > max_sent_len:
+                words = words[:max_sent_len]
+                
+            # Add to corpus
+            corpus.append(words)
+            sentence_ratings.append(rating)
+            review_ids.append(review_idx)
+    
+    # Convert to numpy arrays
+    sentence_ratings = np.array(sentence_ratings, dtype=np.float32)
+    review_ids = np.array(review_ids, dtype=np.int32)
+    
+    if verbose:
+        print(f"Created corpus with {len(corpus)} sentences from {N_reviews} reviews.")
+        
+    return corpus, sentence_ratings, review_ids
 
 
 def find_unique_words(corpus):
@@ -127,7 +160,15 @@ def find_unique_words(corpus):
     Python list of str.
         List of unique words in the corpus.
     '''
-    pass
+    unique_words = []
+    
+    for sentence in corpus:
+        for word in sentence:
+            if word not in unique_words:
+                unique_words.append(word)
+                
+    return unique_words
+    # return list(set(word for sentence in corpus for word in sentence))
 
 
 def make_word2ind_mapping(vocab):
@@ -143,7 +184,7 @@ def make_word2ind_mapping(vocab):
     -----------
     Python dictionary. key,value pairs: str,int
     '''
-    pass
+    return {word: idx for idx, word in enumerate(vocab)}
 
 
 def make_ind2word_mapping(vocab):
@@ -159,7 +200,7 @@ def make_ind2word_mapping(vocab):
     -----------
     Python dictionary with key,value pairs: int,str
     '''
-    pass
+    return {idx: word for idx, word in enumerate(vocab)}
 
 
 def make_target_context_word_lists(corpus, word2ind, context_win_sz=2):
@@ -199,7 +240,33 @@ def make_target_context_word_lists(corpus, word2ind, context_win_sz=2):
     edge effects.
     - The length of target_words_int and context_words_int MUST be equal!
     '''
-    pass
+    target_words = []
+    context_words = []
+    
+    for sentence in corpus:
+        sentence_length = len(sentence)
+        for i in range(sentence_length):
+            target_word = sentence[i]
+            target_word_idx = word2ind[target_word]
+            
+            # Get context words within the window
+            for j in range(max(0, i - context_win_sz), min(sentence_length, i + context_win_sz + 1)):
+                # Skip the target word itself
+                if i == j:
+                    continue
+                
+                context_word = sentence[j]
+                context_word_idx = word2ind[context_word]
+                
+                # Add to lists
+                target_words.append(target_word_idx)
+                context_words.append(context_word_idx)
+    
+    # Convert to TF constants
+    target_words_int = tf.constant(target_words, dtype=tf.int32)
+    context_words_int = tf.constant(context_words, dtype=tf.int32)
+    
+    return target_words_int, context_words_int
 
 
 def get_dataset_word2vec(N_reviews=40000, verbose=False):
@@ -222,7 +289,23 @@ def get_dataset_word2vec(N_reviews=40000, verbose=False):
     Python list of str.
         The vocabulary / list of unique words in the corpus.
     '''
-    pass
+    # Get corpus
+    corpus, sentence_ratings, review_ids = make_corpus(N_reviews=N_reviews, verbose=verbose)
+    
+    # Get vocabulary
+    vocab = find_unique_words(corpus)
+    
+    # Get word-to-index mapping
+    word2ind = make_word2ind_mapping(vocab)
+    
+    # Get target and context words
+    targets_int, contexts_int = make_target_context_word_lists(corpus, word2ind)
+    
+    if verbose:
+        print(f"Created dataset with {len(targets_int)} target-context word pairs.")
+        print(f"Vocabulary size: {len(vocab)} unique words.")
+    
+    return targets_int, contexts_int, vocab
 
 
 def get_most_similar_words(k, word_str, all_embeddings, word_str2int, eps=1e-10):
@@ -253,7 +336,27 @@ def get_most_similar_words(k, word_str, all_embeddings, word_str2int, eps=1e-10)
     https://www.tensorflow.org/api_docs/python/tf/math/top_k
     -
     '''
-    pass
+    # Get the query word's embedding
+    query_idx = word_str2int[word_str]
+    query_embedding = all_embeddings[query_idx]
+    
+    # Calculate dot product between query embedding and all embeddings
+    dot_products = tf.matmul(all_embeddings, tf.reshape(query_embedding, (-1, 1)))
+    
+    # Calculate magnitudes
+    query_magnitude = tf.sqrt(tf.reduce_sum(tf.square(query_embedding)) + eps)
+    all_magnitudes = tf.sqrt(tf.reduce_sum(tf.square(all_embeddings), axis=1, keepdims=True) + eps)
+    
+    # Calculate cosine similarities
+    cosine_similarities = dot_products / (all_magnitudes * query_magnitude)
+    cosine_similarities = tf.reshape(cosine_similarities, [-1])
+    
+    # Get the top k+1 similarities (including the query word itself)
+    top_k_plus_one = tf.math.top_k(cosine_similarities, k=k+1)
+    top_indices = top_k_plus_one.indices.numpy()
+    top_similarities = top_k_plus_one.values.numpy()
+    
+    return top_indices, top_similarities
 
 
 def find_unique_word_counts(corpus, sort_by_count=True):
