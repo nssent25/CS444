@@ -12,8 +12,11 @@ from inception_layers import GlobalAveragePooling2D
 from residual_block import ResidualBlock
 from bottleneck_block import BottleneckBlock
 
+from resnext_block import ResNeXtBlock
 
-def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, first_block_stride=1, block_type='residual', expansion=4):
+
+
+def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, first_block_stride=1, block_type='residual', expansion=4, cardinality=32):
     '''Creates a stack of `num_blocks` Residual Blocks, each with `units` neurons.
 
     Parameters:
@@ -32,14 +35,18 @@ def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, firs
         The stride for ALL blocks in the stack after the first ALWAYS is 1.
     block_type: str.
         Ignore for base project. Option here to help in case you want to build very deep ResNets (e.g. ResNet-50)
-        for Extensions, which use 'bottleneck' blocks.    
+        for Extensions, which use 'bottleneck' blocks.
     expansion: int.
         Expansion factor for bottleneck blocks. Only used when block_type='bottleneck'.
 
     Returns:
     --------
     Python list.
-        list of Residual Blocks in the current stack.
+        lis Residualt of Residual Blocks in the current stac
+    NOTE: To help keep stacks, blocks, and layers organized when printing the summary, modify each block name by
+    preprending the stack name to which it belongs. For example, if this is stack_1, call the first two blocks
+    'stack_1/block_1' and 'stack_1/block_2'.
+k.
 
     NOTE: To help keep stacks, blocks, and layers organized when printing the summary, modify each block name by
     preprending the stack name to which it belongs. For example, if this is stack_1, call the first two blocks
@@ -65,12 +72,24 @@ def stack_residualblocks(stackname, units, num_blocks, prev_layer_or_block, firs
                 expansion=expansion,
                 strides=stride
             )
+        elif block_type == 'resnext':
+            block = ResNeXtBlock(
+                blockname=blockname,
+                units=units,
+                prev_layer_or_block=prev_layer_or_block,
+                cardinality=cardinality,
+                expansion=expansion,
+                strides=stride,
+            )
         else:
             raise ValueError(f"Unknown block_type: {block_type}. Use 'residual' or 'bottleneck'.")
         blocks.append(block)
         prev_layer_or_block = block  # Update prev_layer_or_block for the next block
 
     return blocks
+
+
+
 
 
 class ResNet(network.DeepNetwork):
@@ -309,7 +328,7 @@ class ResNet50(ResNet):
             name='conv_1',
             units=filters,
             kernel_size=(3, 3),
-            prev_layer_or_block=None,
+                        prev_layer_or_block=None,
             activation='relu',
             wt_init='he',
             do_batch_norm=True
@@ -348,6 +367,63 @@ class ResNet50(ResNet):
             units=C,
             activation='softmax',
             prev_layer_or_block=prev_layer,
+            wt_init='he'
+        )
+        self.layers.append(self.output_layer)
+
+
+class ResNeXt18(ResNet):
+    """ResNeXt‑18: 4 stacks of 2 ResNeXtBlocks, like ResNet18 but with grouped conv."""
+    def __init__(self, C, input_feats_shape=(32,32,3), reg=0,
+                 cardinality=32, expansion=4):
+        super().__init__(input_feats_shape, reg)
+        self.layers = []
+
+        # stem conv
+        self.stem = Conv2D(
+            name='conv_1',
+            units=64,
+            kernel_size=(3,3),
+            prev_layer_or_block=None,
+            activation='relu',
+            wt_init='he',
+            do_batch_norm=True
+        )
+        self.layers.append(self.stem)
+        prev = self.stem
+
+        # 4 stacks of 2 ResNeXt blocks each
+        blocks_per_stack = [2,2,2,2]
+        filters =      [64,128,256,512]
+        first_strides =[1, 2,  2,  2]
+
+        for i,(n_blk, f, stride) in enumerate(zip(blocks_per_stack, filters, first_strides),1):
+            stk = stack_residualblocks(
+                stackname=f'stack_{i}',
+                units=f,
+                num_blocks=n_blk,
+                prev_layer_or_block=prev,
+                first_block_stride=stride,
+                block_type='resnext', # Use ResNeXt blocks
+                cardinality=cardinality,
+                expansion=expansion
+            )
+            self.layers.extend(stk)
+            prev = stk[-1]
+
+        # global pool + output
+        self.global_pool = GlobalAveragePooling2D(
+            name='global_avg_pool',
+            prev_layer_or_block=prev
+        )
+        self.layers.append(self.global_pool)
+        prev = self.global_pool
+
+        self.output_layer = Dense(
+            name='output',
+            units=C,
+            activation='softmax',
+            prev_layer_or_block=prev,
             wt_init='he'
         )
         self.layers.append(self.output_layer)
