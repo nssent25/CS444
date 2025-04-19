@@ -129,6 +129,7 @@ def generate_word_sentiment_labels(N_reviews=40000, threshold=3, min_occurrences
     
     # Generate labels based on counts
     word_labels = {}
+    word_counts = {}
     
     for word in vocab:
         pos_count = pos_counts[word]
@@ -140,6 +141,7 @@ def generate_word_sentiment_labels(N_reviews=40000, threshold=3, min_occurrences
             # Label as positive (1) if it appears more in positive reviews, negative (0) otherwise
             label = 1 if pos_count > neg_count else 0
             word_labels[word] = label
+            word_counts[word] = total_count
     
     # Make actual data for training
     embeddings = load_embeddings()
@@ -157,10 +159,10 @@ def generate_word_sentiment_labels(N_reviews=40000, threshold=3, min_occurrences
     X = np.array(X_raw, dtype=np.float32)
     y = np.array(y, dtype=np.int32)#.reshape(-1, 1)
     
-    return X, y, words
+    return X, y, words, word_counts
 
 
-def analyze_results(model, X, y, words, top_n=10):
+def analyze_results(model, X, y, words, word_counts, top_n=10):
     """Analyze sentiment classification results with comprehensive metrics and visualizations"""
     from sklearn.metrics import roc_curve, auc
     import numpy as np
@@ -187,16 +189,8 @@ def analyze_results(model, X, y, words, top_n=10):
     false_pos = np.sum((true_labels == 0) & (y_pred == 1))
     false_neg = np.sum((true_labels == 1) & (y_pred == 0))
     
-    # Calculate precision, recall, F1
-    precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) > 0 else 0
-    recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) > 0 else 0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-    
     print("==== MODEL PERFORMANCE METRICS ====")
     print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
     print(f"True Positives: {true_pos}")
     print(f"True Negatives: {true_neg}")
     print(f"False Positives: {false_pos}")
@@ -222,11 +216,11 @@ def analyze_results(model, X, y, words, top_n=10):
     print("\n==== MISCLASSIFICATIONS ====")
     print(f"Top {top_n} False Positives (negative words classified as positive):")
     for i, (word, neg_prob, pos_prob) in enumerate(false_positives[:top_n]):
-        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Pos={pos_prob:.4f}")
+        print(f"{i+1}. '{word}': Pos={pos_prob:.4f}, Count={word_counts[word]}")
     
     print(f"\nTop {top_n} False Negatives (positive words classified as negative):")
     for i, (word, neg_prob, pos_prob) in enumerate(false_negatives[:top_n]):
-        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Pos={pos_prob:.4f}")
+        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Count={word_counts[word]}")
     
     # SECTION 3: Most/Least Confident Words By Class
     # Filter by true class
@@ -276,50 +270,19 @@ def analyze_results(model, X, y, words, top_n=10):
     
     weak_neg_words = [word for word, _, _ in least_conf_neg[:top_n]]
     weak_neg_scores = [neg_prob for _, neg_prob, _ in least_conf_neg[:top_n]]
-    
-    # Create visualization grid
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    
-    # Most confident positive words
-    axes[0, 0].barh(pos_words, pos_scores, color='green', alpha=0.7)
-    axes[0, 0].set_xlabel('Positive Class Probability')
-    axes[0, 0].set_title('Most Confident Positive Words')
-    axes[0, 0].set_xlim(0, 1)
-    axes[0, 0].grid(axis='x')
-    
-    # Most confident negative words
-    axes[0, 1].barh(neg_words, neg_scores, color='red', alpha=0.7)
-    axes[0, 1].set_xlabel('Negative Class Probability')
-    axes[0, 1].set_title('Most Confident Negative Words')
-    axes[0, 1].set_xlim(0, 1)
-    axes[0, 1].grid(axis='x')
-    
-    # Least confident positive words
-    axes[1, 0].barh(weak_pos_words, weak_pos_scores, color='green', alpha=0.7)
-    axes[1, 0].set_xlabel('Positive Class Probability')
-    axes[1, 0].set_title('Least Confident Positive Words')
-    axes[1, 0].set_xlim(0, 1)
-    axes[1, 0].grid(axis='x')
-    
-    # Least confident negative words
-    axes[1, 1].barh(weak_neg_words, weak_neg_scores, color='red', alpha=0.7)
-    axes[1, 1].set_xlabel('Negative Class Probability')
-    axes[1, 1].set_title('Least Confident Negative Words')
-    axes[1, 1].set_xlim(0, 1)
-    axes[1, 1].grid(axis='x')
-    
-    plt.tight_layout()
-    plt.show()
+
     
     # Confusion matrix visualization
     plt.figure(figsize=(8, 6))
     cm = np.array([[true_neg, false_pos], [false_neg, true_pos]])
-    plt.imshow(cm, interpolation='nearest', cmap='viridis')
+    plt.imshow(cm, interpolation='nearest', cmap='viridis_r')
     plt.title('Confusion Matrix')
     plt.colorbar()
     
     # Add text annotations to confusion matrix
-    thresh = cm.max() / 2 - cm.min() / 2
+    print(cm)
+    thresh = cm.max() / 2 + cm.min() / 2
+    print(thresh)
     for i in range(2):
         for j in range(2):
             plt.text(j, i, format(cm[i, j], 'd'),
