@@ -240,6 +240,10 @@ class DeepNetwork:
         '''
         if output_layer_net_act is None:
             output_layer_net_act = self(x)
+        # if self.loss_name.lower() == 'binary_crossentropy':
+        #     # For binary classification, threshold at 0.5
+        #     output_layer_net_act = tf.cast(output_layer_net_act > 0.5, tf.int32)
+        #     return output_layer_net_act
 
         return tf.argmax(output_layer_net_act, axis=1)
 
@@ -269,18 +273,16 @@ class DeepNetwork:
         function in tf_util.py that offers functionality that is similar to arange indexing in NumPy (which you cannot
         do in TensorFlow). Use it!
         '''
-
+        # if self.loss_name.lower() == 'cross_entropy':
         selected_values = arange_index(out_net_act, y)
-
-        # Compute the cross-entropy loss
         loss = -tf.reduce_mean(tf.math.log(selected_values + eps))
-
-
-
-        
+        # elif self.loss_name.lower() == 'binary_crossentropy':
+        #     # Binary cross-entropy for single output
+        #     loss = -tf.reduce_mean(y * tf.math.log(out_net_act + eps) + 
+        #                           (1 - y) * tf.math.log(1 - out_net_act + eps))
         # else:
-            # raise ValueError(f'Unknown loss function {self.loss_name}')
-
+        #     raise ValueError(f'Unknown loss function {self.loss_name}')
+    
         # Keep the following code
         # Handles the regularization for Adam
         if self.optimizer_name.lower() == 'adam':

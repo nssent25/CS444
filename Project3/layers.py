@@ -167,6 +167,8 @@ class Layer:
             return net_in
         elif self.act_fun_name == 'softmax':
             return tf.nn.softmax(net_in)
+        # elif self.act_fun_name == 'sigmoid':
+        #     return tf.nn.sigmoid(net_in)
         else:
             raise ValueError(f'Unknown activation function {self.act_fun_name}')
 
