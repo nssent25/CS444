@@ -15,9 +15,8 @@ from sklearn.model_selection import train_test_split
 
 
 class MLP(network.DeepNetwork):
-    '''The VGG4 network with batch normalization added to all Conv2D layers and all non-output Dense layers.'''
     def __init__(self, input_feats_shape, dense_units=(64,32), reg=0, wt_scale=1e-3, wt_init='he'):
-        '''VGG4Plus network constructor
+        '''
 
         Parameters:
         -----------
@@ -222,55 +221,56 @@ def analyze_results(model, X, y, words, word_counts, top_n=10):
     for i, (word, neg_prob, pos_prob) in enumerate(false_negatives[:top_n]):
         print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Count={word_counts[word]}")
     
-    # SECTION 3: Most/Least Confident Words By Class
+    # SECTION 3: Most Confident Words and Most Uncertain Words
     # Filter by true class
-    positive_words = [(word, neg_prob, pos_prob) 
+    positive_words = [(word, true_label, neg_prob, pos_prob) 
                       for word, true_label, neg_prob, pos_prob in results 
                       if true_label == 1]
     
-    negative_words = [(word, neg_prob, pos_prob) 
+    negative_words = [(word, true_label, neg_prob, pos_prob) 
                       for word, true_label, neg_prob, pos_prob in results 
                       if true_label == 0]
     
     # Sort for confidence levels
-    most_conf_pos = sorted(positive_words, key=lambda x: x[2], reverse=True)  # highest positive prob
-    least_conf_pos = sorted(positive_words, key=lambda x: x[2])  # lowest positive prob
+    most_conf_pos = sorted(positive_words, key=lambda x: x[3], reverse=True)  # highest positive prob
+    most_conf_neg = sorted(negative_words, key=lambda x: x[2], reverse=True)  # highest negative prob
     
-    most_conf_neg = sorted(negative_words, key=lambda x: x[1], reverse=True)  # highest negative prob
-    least_conf_neg = sorted(negative_words, key=lambda x: x[1])  # lowest negative prob
+    # Find most uncertain words (closest to 50/50 prediction)
+    all_words_uncertainty = [(word, true_label, neg_prob, pos_prob, abs(pos_prob - 0.5)) 
+                            for word, true_label, neg_prob, pos_prob in results]
+    
+    # Sort by closeness to 0.5 probability
+    most_uncertain = sorted(all_words_uncertainty, key=lambda x: x[4])
     
     print("\n==== WORD CONFIDENCE ANALYSIS ====")
     
     print(f"\nTop {top_n} Most Confident POSITIVE Words:")
-    for i, (word, neg_prob, pos_prob) in enumerate(most_conf_pos[:top_n]):
-        print(f"{i+1}. '{word}': Pos={pos_prob:.4f}, Neg={neg_prob:.4f}")
+    for i, (word, true_label, neg_prob, pos_prob) in enumerate(most_conf_pos[:top_n]):
+        true_class = "Positive" if true_label == 1 else "Negative"
+        print(f"{i+1}. '{word}': Pos={pos_prob:.4f}, Neg={neg_prob:.4f}, True={true_class}, Count={word_counts[word]}")
     
     print(f"\nTop {top_n} Most Confident NEGATIVE Words:")
-    for i, (word, neg_prob, pos_prob) in enumerate(most_conf_neg[:top_n]):
-        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Pos={pos_prob:.4f}")
+    for i, (word, true_label, neg_prob, pos_prob) in enumerate(most_conf_neg[:top_n]):
+        true_class = "Positive" if true_label == 1 else "Negative"
+        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Pos={pos_prob:.4f}, True={true_class}, Count={word_counts[word]}")
     
-    print(f"\nTop {top_n} Least Confident POSITIVE Words:")
-    for i, (word, neg_prob, pos_prob) in enumerate(least_conf_pos[:top_n]):
-        print(f"{i+1}. '{word}': Pos={pos_prob:.4f}, Neg={neg_prob:.4f}")
-    
-    print(f"\nTop {top_n} Least Confident NEGATIVE Words:")
-    for i, (word, neg_prob, pos_prob) in enumerate(least_conf_neg[:top_n]):
-        print(f"{i+1}. '{word}': Neg={neg_prob:.4f}, Pos={pos_prob:.4f}")
+    print(f"\nTop {top_n} Most UNCERTAIN Words (closest to 50/50):")
+    for i, (word, true_label, neg_prob, pos_prob, _) in enumerate(most_uncertain[:top_n]):
+        true_class = "Positive" if true_label == 1 else "Negative"
+        print(f"{i+1}. '{word}': Pos={pos_prob:.4f}, Neg={neg_prob:.4f}, True={true_class}")
     
     # SECTION 4: Visualizations
     # Extract data for plotting
-    pos_words = [word for word, _, _ in most_conf_pos[:top_n]]
-    pos_scores = [pos_prob for _, _, pos_prob in most_conf_pos[:top_n]]
+    pos_words = [word for word, _, _, _ in most_conf_pos[:top_n]]
+    pos_scores = [pos_prob for _, _, _, pos_prob in most_conf_pos[:top_n]]
     
-    neg_words = [word for word, _, _ in most_conf_neg[:top_n]]
-    neg_scores = [neg_prob for _, neg_prob, _ in most_conf_neg[:top_n]]
+    neg_words = [word for word, _, _, _ in most_conf_neg[:top_n]]
+    neg_scores = [neg_prob for _, _, neg_prob, _ in most_conf_neg[:top_n]]
     
-    weak_pos_words = [word for word, _, _ in least_conf_pos[:top_n]]
-    weak_pos_scores = [pos_prob for _, _, pos_prob in least_conf_pos[:top_n]]
+    uncertain_words = [word for word, _, _, _, _ in most_uncertain[:top_n]]
+    uncertain_pos_scores = [pos_prob for _, _, _, pos_prob, _ in most_uncertain[:top_n]]
+    uncertain_neg_scores = [neg_prob for _, _, neg_prob, _, _ in most_uncertain[:top_n]]
     
-    weak_neg_words = [word for word, _, _ in least_conf_neg[:top_n]]
-    weak_neg_scores = [neg_prob for _, neg_prob, _ in least_conf_neg[:top_n]]
-
     
     # Confusion matrix visualization
     plt.figure(figsize=(8, 6))
@@ -280,9 +280,7 @@ def analyze_results(model, X, y, words, word_counts, top_n=10):
     plt.colorbar()
     
     # Add text annotations to confusion matrix
-    print(cm)
     thresh = cm.max() / 2 + cm.min() / 2
-    print(thresh)
     for i in range(2):
         for j in range(2):
             plt.text(j, i, format(cm[i, j], 'd'),
