@@ -51,7 +51,7 @@ class QueryKeyValueBlock(block.Block):
             prev_layer_or_block=prev_layer_or_block,
             do_layer_norm=True
         )
-        self.key   = Dense(
+        self.key = Dense(
             name=f"{blockname}_K",
             units=units,
             activation='linear',
@@ -70,7 +70,6 @@ class QueryKeyValueBlock(block.Block):
 
         # 3) register them so the block can toggle train/eval mode, etc.
         self.layers = [self.query, self.key, self.value]
-
 
     def __call__(self, query_input, key_input, value_input):
         '''Forward pass through the QKV Block with activations that should represent the input to respective QKV layers.
@@ -148,7 +147,7 @@ class AttentionBlock(block.Block):
         self.attn_dropout = Dropout(
             name=f"{blockname}_dropout",
             rate=dropout_rate,
-            prev_layer_or_block=self
+            prev_layer_or_block=prev_layer_or_block
         )
 
         # register any sub-layers so mode toggles etc. work
@@ -261,8 +260,31 @@ class MultiHeadAttentionBlock(block.Block):
         1. Call and pass in relevant information into the superclass constructor.
         2. Create all the layers and blocks.
         '''
-        pass
+        super().__init__(blockname, prev_layer_or_block)
+        self.units = units
 
+        self.qkv_block = QueryKeyValueBlock(f'{blockname}_qkv',
+                                            units=units,
+                                            prev_layer_or_block=prev_layer_or_block)
+        self.attn_block = AttentionBlock(f'{blockname}_attn',
+                                         num_heads=num_heads,
+                                         units=units,
+                                         dropout_rate=dropout_rate,
+                                         causal=causal,
+                                         prev_layer_or_block=self.qkv_block)
+        # Final Dense layer projects H_qkv -> H_embed_out (where units = H_qkv = H_embed_out for this block)
+        # No layer norm
+        self.dense_proj = Dense(f'{blockname}_dense_proj',
+                                units=units,
+                                activation='linear',
+                                wt_init='he',
+                                do_layer_norm=False,
+                                prev_layer_or_block=self.attn_block)
+        self.dropout = Dropout(f'{blockname}_dropout',
+                               rate=dropout_rate,
+                               prev_layer_or_block=self.dense_proj)
+
+        self.layers = [self.qkv_block, self.attn_block, self.dense_proj, self.dropout]
 
     def __call__(self, x):
         '''Forward pass through the MultiHead Attention Block.
@@ -277,7 +299,13 @@ class MultiHeadAttentionBlock(block.Block):
         tf.constant. tf.float32s. shape=(B, T, H).
             The output netActs
         '''
-        pass
+        # x is input to Q, K, V projections
+        queries, keys, values = self.qkv_block(x, x, x)
+        attn_output = self.attn_block(queries, keys, values)
+        proj_output = self.dense_proj(attn_output)
+        output = self.dropout(proj_output)
+        
+        return output
 
 
 class MLPBlock(block.Block):
@@ -317,7 +345,30 @@ class MLPBlock(block.Block):
         1. Call and pass in relevant information into the superclass constructor.
         2. Create all the layers and blocks.
         '''
-        pass
+        super().__init__(blockname, prev_layer_or_block)
+        self.units = units
+        
+        units_expanded = units * exp_factor
+
+        self.dense1 = Dense(f'{blockname}_dense1',
+                            units=units_expanded,
+                            activation='gelu',
+                            wt_init='he',
+                            do_layer_norm=True,
+                            prev_layer_or_block=prev_layer_or_block)
+        
+        self.dense2 = Dense(f'{blockname}_dense2',
+                            units=units, # Project back to original embedding dimension
+                            activation='linear',
+                            wt_init='he',
+                            do_layer_norm=False, # No layer norm for the second dense layer
+                            prev_layer_or_block=self.dense1)
+        
+        self.dropout = Dropout(f'{blockname}_dropout',
+                               rate=dropout_rate,
+                               prev_layer_or_block=self.dense2)
+
+        self.layers = [self.dense1, self.dense2, self.dropout]
 
     def __call__(self, x):
         '''Forward pass through the MLPBlock with the data samples `x`.
@@ -332,7 +383,10 @@ class MLPBlock(block.Block):
         tf.constant. tf.float32s. shape=(B, T, H).
             The output netActs
         '''
-        pass
+        x = self.dense1(x)
+        x = self.dense2(x)
+        x = self.dropout(x)
+        return x
 
 
 class TransformerBlock(block.Block):
@@ -358,7 +412,21 @@ class TransformerBlock(block.Block):
         1. Call and pass in relevant information into the superclass constructor.
         2. Create all the layers and blocks.
         '''
-        pass
+        super().__init__(blockname, prev_layer_or_block)
+        self.units = units
+
+        self.mha_block = MultiHeadAttentionBlock(f'{blockname}_mha',
+                                                 num_heads=num_heads,
+                                                 units=units,
+                                                 dropout_rate=dropout_rate,
+                                                 prev_layer_or_block=prev_layer_or_block)
+        
+        self.mlp_block = MLPBlock(f'{blockname}_mlp',
+                                  units=units,
+                                  dropout_rate=dropout_rate,
+                                  prev_layer_or_block=self.mha_block)
+
+        self.layers = [self.mha_block, self.mlp_block]
 
     def __call__(self, x):
         '''Forward pass through the Transformer block with the data samples `x`.
@@ -375,7 +443,13 @@ class TransformerBlock(block.Block):
 
         NOTE: Don't forget the residual connections that allows the input to skip to the end of each block.
         '''
-        pass
+        # MHA block
+        attn_output = self.mha_block(x)
+        x = x + attn_output
+        # MLP block
+        mlp_output = self.mlp_block(x)
+        x = x + mlp_output
+        return x
 
 
 class PositionalEncodingBlock(block.Block):
@@ -402,7 +476,18 @@ class PositionalEncodingBlock(block.Block):
         1. Call and pass in relevant information into the superclass constructor.
         2. Create all the layers.
         '''
-        pass
+        super().__init__(blockname, prev_layer_or_block)
+        self.embed_dim = embed_dim
+
+        self.pe_layer = PositionalEncoding(name=f'{blockname}_pe',
+                                           embed_dim=embed_dim,
+                                           prev_layer_or_block=prev_layer_or_block)
+        
+        self.dropout_layer = Dropout(name=f'{blockname}_dropout',
+                                     rate=dropout_rate,
+                                     prev_layer_or_block=self.pe_layer)
+
+        self.layers = [self.pe_layer, self.dropout_layer]
 
     def __call__(self, x):
         '''Forward pass through the block with the data samples `x`.
@@ -417,4 +502,6 @@ class PositionalEncodingBlock(block.Block):
         tf.constant. tf.float32s. shape=(B, T, H).
             The output netActs
         '''
-        pass
+        x = self.pe_layer(x)
+        x = self.dropout_layer(x)
+        return x

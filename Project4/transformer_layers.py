@@ -35,7 +35,6 @@ class Embedding(layers.Layer):
         # Initialize the layer's parameters
         self.init_params(input_dim, embed_dim)
         
-
     def has_wts(self):
         '''Returns whether the Embedding layer has weights. It does...'''
         return True
@@ -59,7 +58,6 @@ class Embedding(layers.Layer):
         self.b = None
         self.wts = tf.Variable(tf.random.normal([input_dim, embed_dim], mean=0.0, stddev=std_dev))
         
-
     def compute_net_input(self, x):
         '''Computes the net input for the current Embedding layer.
 
@@ -79,7 +77,6 @@ class Embedding(layers.Layer):
         '''
         return tf.gather(self.wts, x)
     
-
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,
         but this method is provided to you. You should not need to modify it.
@@ -107,7 +104,11 @@ class PositionalEncoding(layers.Layer):
         2. Print a warning/error if the embedding dimension (H) is not even, since this layer's sin/cos coding requires
         an even split.
         '''
-        pass
+        super().__init__(name, activation='linear', prev_layer_or_block=prev_layer_or_block)
+        if embed_dim % 2 != 0:
+            raise ValueError(f"embed_dim must be even for PositionalEncoding, but got {embed_dim}")
+        self.embed_dim = embed_dim
+        self.pos_encoding = None  # For lazy initialization
 
     def create_position_encoding(self, embed_dim, seq_len):
         '''Creates a positional encoding tensor using the sin/cos scheme for a sequence of length `seq_len` tokens
@@ -133,7 +134,27 @@ class PositionalEncoding(layers.Layer):
         - The provided `interleave_cols` function should be helpful, as should be tf.expand_dims.
         - To allow TensorFlow track the flow of gradients, you should implement this with 100% TensorFlow and no loops.
         '''
-        pass
+        positions = tf.range(seq_len, dtype=tf.float32)[:, tf.newaxis]  # Shape: (T, 1)
+
+        # k_values are the actual k in the formula: 0, 0, 2, 2, ..., H-2, H-2
+        # We need k for each of the H/2 unique frequencies. These are 0, 2, 4, ..., H-2
+        k_for_freq = tf.range(0, embed_dim, 2, dtype=tf.float32) # Shape: (H/2)
+
+        # omega_k = 1 / (10000^(k / H_embed))
+        # div_term corresponds to omega_k for each of the H/2 frequencies
+        div_term = 1.0 / tf.pow(10000.0, k_for_freq / tf.cast(embed_dim, tf.float32)) # Shape: (H/2)
+        div_term = div_term[tf.newaxis, :] # Shape: (1, H/2) for broadcasting
+
+        # angle_rads = t * omega_k
+        angle_rads = positions * div_term  # Shape: (T, H/2)
+        sin_component = tf.sin(angle_rads)  # Shape: (T, H/2)
+        cos_component = tf.cos(angle_rads)  # Shape: (T, H/2)
+
+        # Interleave: sin at even indices (0, 2, ...), cos at odd indices (1, 3, ...)
+        pe = interleave_cols(sin_component, cos_component)  # Shape: (T, H)
+        
+        pe = tf.expand_dims(pe, axis=0)  # Shape: (1, T, H) to allow broadcasting with batch
+        return pe
 
     def compute_net_input(self, x):
         '''Computes the net input for the current PositionalEncoding layer, which is the sum of the input with the
@@ -152,7 +173,13 @@ class PositionalEncoding(layers.Layer):
         NOTE: This layer uses lazy initialization. This means that if the position code has not been defined yet,
         we call `create_position_encoding` to create it and set the result to the instance variable.
         '''
-        pass
+        B, T, H = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
+
+        # Lazy init
+        if self.pos_encoding is None or tf.shape(self.pos_encoding)[1] != T:
+            self.pos_encoding = self.create_position_encoding(seq_len=T, embed_dim=self.embed_dim)
+        
+        return x + self.pos_encoding
 
     def __str__(self):
         '''This layer's "ToString" method. Feel free to customize if you want to make the layer description fancy,

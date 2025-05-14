@@ -167,6 +167,8 @@ class Layer:
             return net_in
         elif self.act_fun_name == 'softmax':
             return tf.nn.softmax(net_in)
+        elif self.act_fun_name == 'gelu':
+            return self.gelu(net_in)
         # elif self.act_fun_name == 'sigmoid':
         #     return tf.nn.sigmoid(net_in)
         else:
@@ -334,7 +336,7 @@ class Layer:
 
         (Ignore until later in the semester)
         '''
-        pass
+        return self.do_layer_norm
 
     def init_layernorm_params(self, x):
         '''Initializes the parameters for layer normalization if layer normalization is enabled.
@@ -400,7 +402,7 @@ class Layer:
         tf.constant. shape=(B, M)
             Output tensor after applying the GELU activation function.
         '''
-        pass
+        return 0.5 * net_in * (1 + tf.tanh(tf.sqrt(2 / tf.constant(pi, dtype=net_in.dtype)) * (net_in + 0.044715 * tf.pow(net_in, 3))))
 
 
 class Dense(Layer):
