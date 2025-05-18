@@ -176,7 +176,7 @@ class PositionalEncoding(layers.Layer):
         B, T, H = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
 
         # Lazy init
-        if self.pos_encoding is None or tf.shape(self.pos_encoding)[1] != T:
+        if self.pos_encoding is None:
             self.pos_encoding = self.create_position_encoding(seq_len=T, embed_dim=self.embed_dim)
         
         return x + self.pos_encoding

@@ -245,7 +245,7 @@ class DeepNetwork:
         #     output_layer_net_act = tf.cast(output_layer_net_act > 0.5, tf.int32)
         #     return output_layer_net_act
 
-        return tf.argmax(output_layer_net_act, axis=1)
+        return tf.argmax(output_layer_net_act, axis=-1)
 
     def loss(self, out_net_act, y, eps=1e-16):
         '''Computes the loss for the current minibatch based on the output layer activations `out_net_act` and int-coded
