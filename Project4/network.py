@@ -11,6 +11,7 @@ from tf_util import arange_index
 
 import sys
 import platform
+import os
 
 # Define a decorator function that applies different tf.function settings based on platform
 # Cannot be bothered to keep changing this manually
@@ -654,6 +655,77 @@ class DeepNetwork:
         self.opt.learning_rate.assign(self.opt.learning_rate * lr_decay_rate)
         print('Updated lr=', self.opt.learning_rate.numpy())
 
+    def _save_layer_params_recursive(self, component, weights_dict, verbose, processed_layers_names):
+        """
+        Recursively processes a component (Layer or Block) to save its parameters.
+        It first ensures predecessors are processed, then handles the current component.
+        """
+        if component is None:
+            return
+
+        # Determine the predecessor and recurse
+        prev_component = None
+        if hasattr(component, 'get_prev_layer_or_block') and callable(component.get_prev_layer_or_block): # It's a Layer
+            prev_component = component.get_prev_layer_or_block()
+        elif hasattr(component, 'prev_layer_or_block'): # It's a Block
+            prev_component = component.prev_layer_or_block
+        
+        self._save_layer_params_recursive(prev_component, weights_dict, verbose, processed_layers_names)
+
+        # Now, process the current component after its predecessors
+        self._save_component_weights(component, weights_dict, verbose, processed_layers_names)
+
+    def _save_component_weights(self, component, weights_dict, verbose, processed_layers_names):
+        """
+        Saves weights for a given component. If it's a block, iterates its internal layers.
+        If it's a layer, saves its parameters.
+        """
+        if component is None:
+            return
+
+        if hasattr(component, 'blockname'):  # It's a Block
+            # Process layers within this block in their defined order
+            for internal_item in component.layers:
+                self._save_component_weights(internal_item, weights_dict, verbose, processed_layers_names)
+        else:  # It's an individual Layer
+            layer_name = component.get_name()
+            if layer_name in processed_layers_names:
+                return  # Already processed
+            processed_layers_names.add(layer_name)
+
+            if verbose:
+                print(f"Saving for {layer_name} (type: {type(component).__name__})")
+
+            # Save standard weights and biases
+            if hasattr(component, 'wts') and component.wts is not None:
+                weights_dict[f"{layer_name}/weights"] = component.wts.numpy()
+                if verbose: print(f"  Saved weights for {layer_name}")
+            if hasattr(component, 'b') and component.b is not None:
+                weights_dict[f"{layer_name}/bias"] = component.b.numpy()
+                if verbose: print(f"  Saved bias for {layer_name}")
+
+            # Save Batch Normalization parameters
+            if hasattr(component, 'bn_gain') and component.bn_gain is not None:
+                weights_dict[f"{layer_name}/bn_gain"] = component.bn_gain.numpy()
+                if verbose: print(f"  Saved bn_gain for {layer_name}")
+            if hasattr(component, 'bn_bias') and component.bn_bias is not None:
+                weights_dict[f"{layer_name}/bn_bias"] = component.bn_bias.numpy()
+                if verbose: print(f"  Saved bn_bias for {layer_name}")
+            if hasattr(component, 'bn_mean') and component.bn_mean is not None:
+                weights_dict[f"{layer_name}/bn_mean"] = component.bn_mean.numpy()
+                if verbose: print(f"  Saved bn_mean for {layer_name}")
+            if hasattr(component, 'bn_stdev') and component.bn_stdev is not None:
+                weights_dict[f"{layer_name}/bn_stdev"] = component.bn_stdev.numpy()
+                if verbose: print(f"  Saved bn_stdev for {layer_name}")
+            
+            # Save Layer Normalization parameters
+            if hasattr(component, 'ln_gain') and component.ln_gain is not None:
+                weights_dict[f"{layer_name}/ln_gain"] = component.ln_gain.numpy()
+                if verbose: print(f"  Saved ln_gain for {layer_name}")
+            if hasattr(component, 'ln_bias') and component.ln_bias is not None:
+                weights_dict[f"{layer_name}/ln_bias"] = component.ln_bias.numpy()
+                if verbose: print(f"  Saved ln_bias for {layer_name}")
+
     def save_weights(self, file='weights.npy', verbose=False):
         """Save network weights to disk
 
@@ -664,63 +736,84 @@ class DeepNetwork:
         verbose: bool
             If True, print out the names of the layers and parameters being saved
         """
-        # Create dictionary to store all weights
         weights_dict = {}
+        processed_layers_names = set() # To avoid saving a layer's parameters multiple times
 
-        # Traverse the network to collect all parameters
-        layer = self.output_layer
-        layer_index = 0
+        # Start recursive saving from the output layer.
+        # The recursion handles the backward traversal of the main chain and
+        # forward traversal within blocks.
+        self._save_layer_params_recursive(self.output_layer, weights_dict, verbose, processed_layers_names)
 
-        while layer is not None:
-            # If the layer is a block, get the last layer in the block, and move up the block
-            if hasattr(layer, 'blockname'):
-                layer = layer.layers[-1]
-            layer_name = layer.get_name()
-            if verbose:
-                print(f"Saving for {layer_name}")
-
-            # Save weights if layer has them
-            if hasattr(layer, 'wts') and layer.wts is not None:
-                weights_dict[f"{layer_name}/weights"] = layer.wts.numpy()
-                if verbose:
-                    print(f"Saved weights for {layer_name}")
-
-            # Save biases if layer has them
-            if hasattr(layer, 'b') and layer.b is not None:
-                weights_dict[f"{layer_name}/bias"] = layer.b.numpy()
-                if verbose:
-                    print(f"Saved bias for {layer_name}")
-
-            # Save batch normalization parameters if they exist
-            if hasattr(layer, 'bn_gain') and layer.bn_gain is not None:
-                weights_dict[f"{layer_name}/bn_gain"] = layer.bn_gain.numpy()
-                if verbose:
-                    print(f"Saved bn_gain for {layer_name}")
-
-            if hasattr(layer, 'bn_bias') and layer.bn_bias is not None:
-                weights_dict[f"{layer_name}/bn_bias"] = layer.bn_bias.numpy()
-                if verbose:
-                    print(f"Saved bn_bias for {layer_name}")
-
-            if hasattr(layer, 'bn_mean') and layer.bn_mean is not None:
-                weights_dict[f"{layer_name}/bn_mean"] = layer.bn_mean.numpy()
-                if verbose:
-                    print(f"Saved bn_mean for {layer_name}")
-
-            if hasattr(layer, 'bn_stdev') and layer.bn_stdev is not None:
-                weights_dict[f"{layer_name}/bn_stdev"] = layer.bn_stdev.numpy()
-                if verbose:
-                    print(f"Saved bn_stdev for {layer_name}")
-                    
-            # Move to previous layer
-            layer = layer.get_prev_layer_or_block()
-            if verbose:
-                print(f"Prev layer: {layer if layer else 'None'}")
-            layer_index += 1
-
-        # Save the weights dictionary
         np.save(f"{file}", weights_dict)
         print(f"Network weights saved to {file}")
+
+    def _load_layer_params_recursive(self, component, weights_dict, verbose, processed_layers_names):
+        """
+        Recursively processes a component (Layer or Block) to load its parameters.
+        It first ensures predecessors are processed, then handles the current component.
+        """
+        if component is None:
+            return
+
+        prev_component = None
+        if hasattr(component, 'get_prev_layer_or_block') and callable(component.get_prev_layer_or_block): # Layer
+            prev_component = component.get_prev_layer_or_block()
+        elif hasattr(component, 'prev_layer_or_block'): # Block
+            prev_component = component.prev_layer_or_block
+        
+        self._load_layer_params_recursive(prev_component, weights_dict, verbose, processed_layers_names)
+        
+        self._load_component_weights(component, weights_dict, verbose, processed_layers_names)
+
+    def _load_component_weights(self, component, weights_dict, verbose, processed_layers_names):
+        """
+        Loads weights for a given component. If it's a block, iterates its internal layers.
+        If it's a layer, loads its parameters.
+        """
+        if component is None:
+            return
+
+        if hasattr(component, 'blockname'):  # It's a Block
+            for internal_item in component.layers:
+                self._load_component_weights(internal_item, weights_dict, verbose, processed_layers_names)
+        else:  # It's an individual Layer
+            layer_name = component.get_name()
+            if layer_name in processed_layers_names:
+                return # Already processed
+            processed_layers_names.add(layer_name)
+
+            if verbose:
+                print(f"Loading for {layer_name} (type: {type(component).__name__})")
+
+            # Load standard weights and biases
+            if f"{layer_name}/weights" in weights_dict and hasattr(component, 'wts') and component.wts is not None:
+                component.wts.assign(weights_dict[f"{layer_name}/weights"])
+                if verbose: print(f"  Loaded weights for {layer_name}")
+            if f"{layer_name}/bias" in weights_dict and hasattr(component, 'b') and component.b is not None:
+                component.b.assign(weights_dict[f"{layer_name}/bias"])
+                if verbose: print(f"  Loaded bias for {layer_name}")
+
+            # Load Batch Normalization parameters
+            if f"{layer_name}/bn_gain" in weights_dict and hasattr(component, 'bn_gain') and component.bn_gain is not None:
+                component.bn_gain.assign(weights_dict[f"{layer_name}/bn_gain"])
+                if verbose: print(f"  Loaded bn_gain for {layer_name}")
+            if f"{layer_name}/bn_bias" in weights_dict and hasattr(component, 'bn_bias') and component.bn_bias is not None:
+                component.bn_bias.assign(weights_dict[f"{layer_name}/bn_bias"])
+                if verbose: print(f"  Loaded bn_bias for {layer_name}")
+            if f"{layer_name}/bn_mean" in weights_dict and hasattr(component, 'bn_mean') and component.bn_mean is not None:
+                component.bn_mean.assign(weights_dict[f"{layer_name}/bn_mean"])
+                if verbose: print(f"  Loaded bn_mean for {layer_name}")
+            if f"{layer_name}/bn_stdev" in weights_dict and hasattr(component, 'bn_stdev') and component.bn_stdev is not None:
+                component.bn_stdev.assign(weights_dict[f"{layer_name}/bn_stdev"])
+                if verbose: print(f"  Loaded bn_stdev for {layer_name}")
+
+            # Load Layer Normalization parameters
+            if f"{layer_name}/ln_gain" in weights_dict and hasattr(component, 'ln_gain') and component.ln_gain is not None:
+                component.ln_gain.assign(weights_dict[f"{layer_name}/ln_gain"])
+                if verbose: print(f"  Loaded ln_gain for {layer_name}")
+            if f"{layer_name}/ln_bias" in weights_dict and hasattr(component, 'ln_bias') and component.ln_bias is not None:
+                component.ln_bias.assign(weights_dict[f"{layer_name}/ln_bias"])
+                if verbose: print(f"  Loaded ln_bias for {layer_name}")
 
     def load_weights(self, file='weights.npy', verbose=False):
         """Load network weights from disk
@@ -737,65 +830,31 @@ class DeepNetwork:
         bool:
             True if weights were loaded successfully, False otherwise
         """
-        # Check if file exists
         if not os.path.exists(f"{file}"):
             print(f"Error: Could not find weights file at {file}")
             return False
-
-        # Load the weights dictionary
         try:
             weights_dict = np.load(f"{file}", allow_pickle=True).item()
-        except:
-            print(f"Error: Could not load weights from {file}")
+        except Exception as e: # Catch more general exceptions for loading
+            print(f"Error: Could not load weights from {file}: {e}")
             return False
 
-        # Make sure we initialize network parameters before loading
-        x_fake = self.get_one_fake_input()
-        self(x_fake)
+        # Ensure network parameters are initialized.
+        # The compile() method should handle this with its fake forward pass.
+        # Adding a safeguard here:
+        if not self.all_net_params and self.output_layer is not None:
+            # This check implies compile() might not have fully run or output_layer isn't set
+            # Forcing initialization if needed:
+            try:
+                x_fake = self.get_one_fake_input()
+                self(x_fake) # This initializes layers, including LN if do_layer_norm is true
+                self.init_batchnorm_params() # Explicitly init BN params
+            except Exception as e:
+                print(f"Warning: Error during pre-load initialization: {e}. Weights loading might fail if layers are not built.")
+        
+        processed_layers_names = set()
 
-        # Traverse the network and load parameters
-        layer = self.output_layer
-        while layer is not None:
-            if hasattr(layer, 'blockname'):
-                # If the layer is a block, get the last layer in the block
-                layer = layer.layers[-1]
-            layer_name = layer.get_name()
-
-            # Load weights if they exist
-            if f"{layer_name}/weights" in weights_dict and hasattr(layer, 'wts'):
-                layer.wts.assign(weights_dict[f"{layer_name}/weights"])
-                if verbose:
-                    print(f"Loaded weights for {layer_name}")
-
-            # Load biases if they exist
-            if f"{layer_name}/bias" in weights_dict and hasattr(layer, 'b'):
-                layer.b.assign(weights_dict[f"{layer_name}/bias"])
-                if verbose:
-                    print(f"Loaded bias for {layer_name}")
-
-            # Load batch normalization parameters if they exist
-            if f"{layer_name}/bn_gain" in weights_dict and hasattr(layer, 'bn_gain') and layer.bn_gain is not None:
-                layer.bn_gain.assign(weights_dict[f"{layer_name}/bn_gain"])
-                if verbose:
-                    print(f"Loaded bn_gain for {layer_name}")
-
-            if f"{layer_name}/bn_bias" in weights_dict and hasattr(layer, 'bn_bias') and layer.bn_bias is not None:
-                layer.bn_bias.assign(weights_dict[f"{layer_name}/bn_bias"])
-                if verbose:
-                    print(f"Loaded bn_bias for {layer_name}")
-
-            if f"{layer_name}/bn_mean" in weights_dict and hasattr(layer, 'bn_mean') and layer.bn_mean is not None:
-                layer.bn_mean.assign(weights_dict[f"{layer_name}/bn_mean"])
-                if verbose:
-                    print(f"Loaded bn_mean for {layer_name}")
-
-            if f"{layer_name}/bn_stdev" in weights_dict and hasattr(layer, 'bn_stdev') and layer.bn_stdev is not None:
-                layer.bn_stdev.assign(weights_dict[f"{layer_name}/bn_stdev"])
-                if verbose:
-                    print(f"Loaded bn_stdev for {layer_name}")
-
-            # Move to previous layer
-            layer = layer.get_prev_layer_or_block()
+        self._load_layer_params_recursive(self.output_layer, weights_dict, verbose, processed_layers_names)
 
         print(f"Network weights loaded from {file}")
         return True
