@@ -124,38 +124,45 @@ class GPT(network.DeepNetwork):
         return x
 
     def generate_sequence(self, prompt, length, char2ind_map, ind2char_map, end_char=None, method='max',
-                          plot_probs=False, live_print=True):
+                          plot_probs=False, live_print=True, line_width=80):
         '''Generates/predicts a sequence of chars of length `length` chars that follow the provided prompt.
         It is helpful remember that the transformer generates chars one at a time sequentially. Therefore in
         prediction/generation mode, the network processes tokens in mini-batches of one item for one time step.
 
-        This function is provided to you. You should not need to modify it.
-
         Parameters:
         -----------
-        prompt: str.
-            Chars that the transformer should process and predict chars after. Treated as a single sequence (B=1) with
-            a length Tp that is probably != T (seq_len used to train transformer). So this method right-pads prompt
-            until it is length T, which is the length the transformer is used to dealing with.
+        prompt: str or list.
+            Chars/tokens that the transformer should process and predict tokens after.
         length: int.
-            Number of chars that the transformer generates after the prompt chars.
+            Number of tokens that the transformer generates after the prompt.
         char2ind_map: Python dictionary.
-            Keys: chars in vocab. Values: int code of a char in the vocab.
+            Keys: chars/tokens in vocab. Values: int code in the vocab.
         ind2char_map: Python dictionary.
-            Keys: int code of a char in the vocab. Values: Which char it corresponds to in the vocab.
+            Keys: int code in the vocab. Values: corresponding char/token.
+        end_char: str or None.
+            If specified, generation stops when this character is produced.
+        method: str.
+            'max' for deterministic generation or 'distributed' for sampling.
+        plot_probs: bool.
+            Whether to plot probabilities during generation.
+        live_print: bool.
+            Whether to print generated text in real-time.
+        line_width: int.
+            Maximum width of a line before wrapping (only affects display).
 
         Returns:
         -----------
-        str. len=(len(prompt) + `length`).
-            The provided prompt concatenated with the set of transformer generated chars.
+        list.
+            The sequence of generated tokens (without the prompt).
         '''
         # Turn off Dropout
         self.set_layer_training_mode(is_training=False)
 
-        prompt_ints = []
-        # We want to convert prompt (str) to B,T (where B = 1)
-        # Convert chars -> int
-        prompt_ints = [char2ind_map[char] for char in prompt]  # (N_gen,)
+        # Convert prompt to list of integer tokens
+        if isinstance(prompt, str):
+            prompt_ints = [char2ind_map[char] for char in prompt]
+        else:
+            prompt_ints = prompt  # Assume already tokenized
 
         # response (int coded) we will return
         response_int = []
@@ -163,9 +170,11 @@ class GPT(network.DeepNetwork):
         # RNG for distributed multinomial sampling
         rng = np.random.default_rng()
 
-        # print prompt
+        # print prompt and track current line length
+        current_line_length = 0
         if live_print:
             print(prompt, sep='', end='')
+            current_line_length = len(prompt)
 
         # Where we get the next char prediction from the output layer net_acts
         t_ind = len(prompt_ints)-1
@@ -213,9 +222,21 @@ class GPT(network.DeepNetwork):
             else:
                 t_ind = -1
 
-            # live next char live as we go
+            # Print next char live as we go with word wrap
             if live_print:
-                print(ind2char_map[curr_pred_int], sep='', end='')
+                curr_char = ind2char_map[curr_pred_int]
+                print(curr_char, sep='', end='')
+                current_line_length += 1
+
+                # Check if we need to wrap
+                if current_line_length >= line_width:
+                    if curr_char in [' ', '\n', '.', ',', ':', ';', '!', '?']:
+                        print()  # Insert a line break
+                        current_line_length = 0
+
+                # If we encounter a natural line break, reset counter
+                if curr_char == '\n':
+                    current_line_length = 0
 
             if end_char is not None and curr_pred_int == char2ind_map[end_char]:
                 break
@@ -361,4 +382,135 @@ class GPTMini6(GPT):
                                         wt_init='he',
                                         do_layer_norm=True,
                                         prev_layer_or_block=prev_block_for_transformer)
+        self.layers.append(self.output_layer)
+
+
+class GPT1(GPT):
+    '''Implementation of OpenAI's GPT-1 architecture
+    
+    Architecture:
+    - 12 stacked Transformer Blocks
+    - 12 attention heads
+    - Embedding dimension of 768
+    - Dropout rate of 0.2
+    '''
+    def __init__(self, vocab_sz, seq_len, padding_char_enc=None):
+        '''GPT1 constructor'''
+        super().__init__(seq_len=seq_len, padding_char_enc=padding_char_enc)
+        self.vocab_sz = vocab_sz
+        
+        # GPT-1 specific parameters
+        num_heads = 12
+        embed_dim = 768
+        dropout_rate = 0.2
+        
+        # Embedding layer
+        self.embedding_layer = Embedding(name='EmbeddingLayer',
+                                         input_dim=vocab_sz,
+                                         embed_dim=embed_dim,
+                                         prev_layer_or_block=None)
+        self.layers.append(self.embedding_layer)
+        
+        # Positional encoding
+        self.pos_encoding_block = PositionalEncodingBlock(
+            blockname='PositionalEncodingBlock',
+            embed_dim=embed_dim,
+            prev_layer_or_block=self.embedding_layer,
+            dropout_rate=dropout_rate
+        )
+        self.layers.append(self.pos_encoding_block)
+        
+        # 12 Transformer blocks
+        prev_block_for_transformer = self.pos_encoding_block
+        for i in range(12):
+            tb = TransformerBlock(
+                blockname=f'TransformerBlock_{i}',
+                units=embed_dim,
+                num_heads=num_heads,
+                prev_layer_or_block=prev_block_for_transformer,
+                dropout_rate=dropout_rate
+            )
+            self.layers.append(tb)
+            prev_block_for_transformer = tb
+        
+        # Output layer
+        self.output_layer = Dense(
+            name='output',
+            units=vocab_sz,
+            activation='softmax',
+            wt_init='he',
+            do_layer_norm=True,
+            prev_layer_or_block=prev_block_for_transformer
+        )
+        self.layers.append(self.output_layer)
+
+
+class GPT2XL(GPT):
+    '''GPT2XL is an implementation of the GPT-2 XL architecture.
+    
+    Architecture:
+    - 48 transformer blocks
+    - 25 attention heads
+    - Embedding dimension of 1600
+    - Dropout rate of 0.1
+
+    All parameters are customizable in the constructor.
+    '''
+    def __init__(self, vocab_sz, seq_len, padding_token_enc=None, num_heads=25, 
+                 embed_dim=1600, n_layers=48, dropout_rate=0.1):
+        '''GPT2XL constructor
+        
+        Parameters:
+        -----------
+        vocab_sz: int.
+            The vocab size from BPE tokenization
+        seq_len: int.
+            Length of the sequences the transformer processes
+        padding_token_enc: int.
+            The INT-CODED padding token
+        num_heads: int.
+            Number of attention heads (25 for GPT-2 XL)
+        embed_dim: int.
+            Embedding dimension (1600 for GPT-2 XL)
+        n_layers: int.
+            Number of transformer layers (48 for GPT-2 XL)
+        dropout_rate: float.
+            Dropout rate throughout the network
+        '''
+        super().__init__(seq_len=seq_len, padding_char_enc=padding_token_enc)
+        self.vocab_sz = vocab_sz
+        self.embed_dim = embed_dim
+        
+        # Embedding layer
+        self.embedding_layer = Embedding(name='EmbeddingLayer',
+                                         input_dim=vocab_sz,
+                                         embed_dim=embed_dim,
+                                         prev_layer_or_block=None)
+        self.layers.append(self.embedding_layer)
+        
+        # Positional encoding
+        self.pos_encoding_block = PositionalEncodingBlock(blockname='PositionalEncodingBlock',
+                                                          embed_dim=embed_dim,
+                                                          prev_layer_or_block=self.embedding_layer,
+                                                          dropout_rate=dropout_rate)
+        self.layers.append(self.pos_encoding_block)
+        
+        # Transformer blocks (48 for XL)
+        prev_block_for_transformer = self.pos_encoding_block
+        for i in range(n_layers):
+            tb = TransformerBlock(blockname=f'TransformerBlock_{i}',
+                                  units=embed_dim,
+                                  num_heads=num_heads,
+                                  prev_layer_or_block=prev_block_for_transformer,
+                                  dropout_rate=dropout_rate)
+            self.layers.append(tb)
+            prev_block_for_transformer = tb
+        
+        # Output layer
+        self.output_layer = Dense(name='output',
+                                 units=vocab_sz,
+                                 activation='softmax',
+                                 wt_init='he',
+                                 do_layer_norm=True,
+                                 prev_layer_or_block=prev_block_for_transformer)
         self.layers.append(self.output_layer)
